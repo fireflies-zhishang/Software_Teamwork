@@ -162,7 +162,7 @@ git add .
 git commit -m "feat(frontend): add login page"
 ```
 
-Commit message 必须遵循 [Conventional Commits](.trellis/spec/guides/commit-convention.md)。
+Commit message 必须遵循上文。
 
 ### 6. 推送到个人 fork
 
@@ -225,15 +225,6 @@ gh pr view --web
 - Commitlint 通过。
 - 至少一名维护者 review 通过。
 - 分支包含当前最新 `develop`。
-
-推荐 GitHub Branch Protection 设置：
-
-| Branch | 规则 |
-|--------|------|
-| `develop` | Require PR、Require status checks、Require branch up to date、Require approval |
-| `main` | 限制发布维护者或发布机器人更新、Require status checks、禁止日常开发 PR |
-
-维护者配置说明见 [docs/repository-settings.md](docs/repository-settings.md)。
 
 ## 常见错误
 
