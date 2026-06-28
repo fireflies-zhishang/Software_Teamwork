@@ -46,7 +46,7 @@
   "pathLabels": [
     {
       "paths": [
-        "apps/frontend/**"
+        "apps/web/**"
       ],
       "labels": [
         "frontend"

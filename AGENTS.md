@@ -19,3 +19,11 @@ If you're using Codex or another agent-capable tool, additional project-scoped h
 Managed by Trellis. Edits outside this block are preserved; edits inside may be overwritten by a future `trellis update`.
 
 <!-- TRELLIS:END -->
+
+## 项目前端说明
+
+- 前端源码放在 `apps/web/src/`。
+- 分支、PR、提交和合并策略以 `CONTRIBUTING.md` 为准；当前前端工作默认通过个人 fork 向主仓库 `develop` 发起 PR。
+- 面向团队成员的协作流程见 `docs/frontend-workflow.md`。
+- 面向 agent 的前端规范见 `.trellis/spec/frontend/index.md`。
+- 涉及前端开发、分支、PR、Lint 或 CI 时，优先加载项目级 `frontend-workflow` skill。

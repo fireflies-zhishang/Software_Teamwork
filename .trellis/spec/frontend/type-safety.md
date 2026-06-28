@@ -1,125 +1,94 @@
 # Type Safety
 
-> TypeScript type-safety patterns for the frontend.
+> TypeScript, OpenAPI, Zod, and runtime validation rules.
 
----
+## Core Rules
 
-## Overview
+- Use TypeScript for all frontend code.
+- Prefer generated API types from OpenAPI when backend contracts exist.
+- Validate user input and untrusted runtime data with Zod.
+- Keep route params and search params typed through TanStack Router.
+- Avoid `any`; use `unknown` plus validation when the shape is not known.
 
-Frontend code uses TypeScript. Types should document UI and API contracts
-without pretending that backend responses are trustworthy at runtime.
+## API Types
 
-Use compile-time types for internal code and runtime validation at API
-boundaries when response shape affects user-visible behavior.
+- Store generated clients/types under `apps/web/src/api/generated/`.
+- Do not manually edit generated files.
+- Wrap generated calls in feature-level functions when UI needs domain naming, query keys, or response normalization.
+- Keep frontend DTO mapping explicit when backend response shape is not UI-ready.
 
----
+## Zod Schemas
 
-## Type Organization
+Use Zod for:
 
-Feature-local types:
+- Login and registration forms.
+- Knowledge base create/edit forms.
+- Retrieval parameter forms: Top K, similarity threshold, rerank threshold, selected knowledge bases.
+- Model configuration forms: API URL, model name, timeout, credentials placeholders.
+- Report generation parameters.
+- Report outline and section save payloads when edited client-side.
 
-```text
-src/features/knowledge/types.ts
-```
-
-Shared cross-feature types:
-
-```text
-src/shared/types/
-```
-
-API response and request types should live near the API function that owns them:
-
-```text
-src/features/files/api/uploadFile.ts
-src/features/files/api/types.ts
-```
-
-Rules:
-
-- Keep types close to the code that owns them.
-- Promote types to `shared/types` only when multiple features use them.
-- Do not mirror backend database schemas directly in frontend types.
-- Name API DTOs explicitly, for example `KnowledgeSearchResponse`.
-- Name UI view models explicitly when transformed from API data.
-
----
-
-## Runtime Validation
-
-Use runtime validation for:
-
-- gateway API responses with complex nested data,
-- user-upload metadata,
-- feature flags or remote configuration,
-- data that controls permissions, rendering, or generated document workflows.
-
-The validation library is not fixed yet. If one is introduced, document it and
-use it consistently. Zod is the default candidate if the team wants a concrete
-option later.
-
-Pattern:
+Infer form value types from schemas:
 
 ```ts
-export type KnowledgeItem = {
-  id: string;
-  title: string;
-  updatedAt: string;
-};
+const retrievalSettingsSchema = z.object({
+  topK: z.number().int().min(1).max(100),
+  similarityThreshold: z.number().min(0).max(1),
+  rerankThreshold: z.number().min(0).max(1).optional(),
+})
 
-export async function listKnowledgeItems(): Promise<KnowledgeItem[]> {
-  const data = await gatewayClient.get("/knowledge/items");
-  // validate or normalize here before returning to components
-  return data.items;
+type RetrievalSettingsForm = z.infer<typeof retrievalSettingsSchema>
+```
+
+## Domain Types
+
+Define domain types for important client-side structures:
+
+```ts
+type Citation = {
+  documentId: string
+  documentName: string
+  chunkId: string
+  content: string
+  score: number
+  sectionPath?: string
+}
+
+type ReportOutlineNode = {
+  id: string
+  title: string
+  level: number
+  kind: 'text' | 'table' | 'image'
+  children?: ReportOutlineNode[]
 }
 ```
 
----
+Prefer generated backend types for persisted entities and explicit frontend types for UI-only state.
 
-## Common Patterns
+## Discriminated Unions
 
-- Use discriminated unions for workflow states:
+Use discriminated unions for status-heavy UI:
+
+- Document processing status.
+- Upload item status.
+- Chat message status.
+- Report section generation status.
+- Long task status.
+
+Example:
 
 ```ts
-type UploadState =
-  | { status: "idle" }
-  | { status: "uploading"; progress: number }
-  | { status: "success"; fileId: string }
-  | { status: "error"; message: string };
+type UploadItemState =
+  | { status: 'queued'; file: File }
+  | { status: 'uploading'; file: File; progress: number }
+  | { status: 'done'; documentId: string }
+  | { status: 'failed'; file: File; message: string }
 ```
-
-- Use `unknown` before validating external data.
-- Use type guards for small validation cases.
-- Use `as const` for stable literal maps.
-- Prefer derived types when the source is local and stable.
-
----
 
 ## Forbidden Patterns
 
-- `any` for API responses, component props, or shared utilities.
-- Type assertions that silence real uncertainty, for example `response as User`.
-- Non-null assertions without a preceding guard.
-- Exporting massive catch-all types from `shared/types`.
-- Reusing backend persistence names when frontend view models differ.
-
-If a type assertion is unavoidable, keep it local and explain the invariant in a short comment.
-
----
-
-## API Boundary Rules
-
-- API clients return typed and normalized data.
-- Components should not parse raw `fetch` responses.
-- Components should not know backend error internals.
-- Date/time strings from the backend should be normalized or clearly documented before display.
-- Permission-sensitive fields should be treated defensively even when typed.
-
----
-
-## Common Mistakes
-
-- Trusting generated or handwritten DTO types without runtime checks at critical boundaries.
-- Passing raw API objects deep into generic UI components.
-- Using `Partial<T>` for form state until required fields become unclear.
-- Hiding backend/frontend shape differences behind one shared type name.
+- `any` for API responses, form values, route params, or event payloads.
+- Blind `as` assertions to force types through compile errors.
+- Duplicating backend DTO types by hand when generated types exist.
+- Allowing untyped search params into query keys.
+- Treating streamed JSON chunks as trusted without parsing and validation.

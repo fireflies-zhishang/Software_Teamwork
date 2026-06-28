@@ -116,7 +116,7 @@ The README should document the frontend as React + TypeScript without committing
 Use a service-grouped monorepo layout in the README and specs:
 
 ```text
-apps/frontend/
+apps/web/
 services/gateway/
 services/auth/
 services/file/

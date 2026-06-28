@@ -11,11 +11,11 @@ auto-labeled by the actual target paths and referenced labels exist in GitHub.
 - Preserve the existing uncommitted `.github/labeler.json` account-label change
   that adds `ChenBaoZhuangdayun` to `PrimeTeam`.
 - Create a minimal, trackable folder skeleton for the README target layout:
-  `apps/frontend`, the six Go service directories under `services/`, and
+  `apps/web`, the six Go service directories under `services/`, and
   `deploy`.
 - Avoid pretending services or the frontend are initialized before tool choices
   and runtime code exist.
-- Update `.github/labeler.json` `pathLabels` to use `apps/frontend/**`,
+- Update `.github/labeler.json` `pathLabels` to use `apps/web/**`,
   `services/**`, service-specific paths, `deploy/**`, `.github/workflows/**`,
   docs/spec paths, and Trellis/agent configuration paths.
 - Create any GitHub labels referenced by the new path rules if they are missing.
@@ -65,7 +65,7 @@ can match the intended paths, without introducing empty runtime/build artifacts.
 
 ## Technical Notes
 
-- README target layout lists `apps/frontend`, `services/{gateway,auth,file,qa,knowledge,document}`,
+- README target layout lists `apps/web`, `services/{gateway,auth,file,qa,knowledge,document}`,
   `deploy`, `docs`, `.github/workflows`, and `.trellis`.
 - CONTRIBUTING states Auto Label skips labels that do not already exist.
 - Existing remote labels before this task: default GitHub labels, `L1nggTeam`,

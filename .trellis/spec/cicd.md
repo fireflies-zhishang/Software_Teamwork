@@ -11,7 +11,7 @@ automation. Existing collaboration workflows protect contribution rules. Product
 CI/CD should be added around the confirmed monorepo layout:
 
 ```text
-apps/frontend/
+apps/web/
 services/gateway/
 services/auth/
 services/file/
@@ -45,7 +45,7 @@ Recommended workflow files:
 
 | Workflow | Suggested File | Trigger |
 |----------|----------------|---------|
-| Frontend CI | `.github/workflows/frontend-ci.yml` | `apps/frontend/**` |
+| Frontend CI | `.github/workflows/frontend-ci.yml` | `apps/web/**` |
 | Go Services CI | `.github/workflows/go-services-ci.yml` | `services/**` |
 | Docker Build | `.github/workflows/docker-build.yml` | service Dockerfiles, service code, `deploy/**` |
 | Deploy | `.github/workflows/deploy.yml` | protected branch or manual dispatch |
@@ -61,14 +61,14 @@ are needed.
 Frontend CI should run only when frontend files or frontend-related workflow
 files change.
 
-Required steps once `apps/frontend/package.json` exists:
+Required steps once `apps/web/package.json` exists:
 
 ```bash
-cd apps/frontend
-npm ci
-npm run lint
-npm run test
-npm run build
+cd apps/web
+bun install --frozen-lockfile
+bun run lint
+bun run test
+bun run build
 ```
 
 Rules:
@@ -130,7 +130,7 @@ service:
 Every runtime service should have its own Dockerfile:
 
 ```text
-apps/frontend/Dockerfile
+apps/web/Dockerfile
 services/gateway/Dockerfile
 services/auth/Dockerfile
 services/file/Dockerfile
@@ -220,7 +220,7 @@ For PRs:
 
 - PR Guard passes.
 - Commitlint passes.
-- Frontend CI passes when `apps/frontend/**` changes.
+- Frontend CI passes when `apps/web/**` changes.
 - Go service CI passes for each changed service.
 - Docker build passes when Dockerfiles or deploy definitions change.
 - Documentation changes update README/specs when architecture or commands change.

@@ -1,93 +1,54 @@
 # Hook Guidelines
 
-> How React hooks are used in this project.
-
----
+> Custom hooks, data fetching hooks, and streaming hooks.
 
 ## Overview
 
-Hooks should isolate stateful UI logic, data fetching, and reusable browser
-behavior. Hooks must not hide broad business workflows behind unclear names.
+Hooks should isolate reusable stateful logic without hiding important product flow. Prefer small hooks with clear ownership over large "god hooks".
 
-Use React Query for server-state hooks once data fetching is implemented.
-Build-tool choice does not affect hook conventions.
+## Naming
 
----
-
-## Custom Hook Patterns
-
-Use custom hooks when:
-
-- multiple components share the same stateful behavior,
-- a component needs complex derived state,
-- browser APIs need lifecycle cleanup,
-- data fetching needs a feature-specific wrapper.
-
-Preferred shape:
-
-```ts
-export function useDebouncedValue<T>(value: T, delayMs: number): T {
-  // implementation
-}
-```
-
-Rules:
-
-- Hooks must start with `use`.
-- Keep hook inputs explicit.
-- Return named objects for hooks with more than two return values.
-- Clean up timers, subscriptions, and event listeners.
-- Keep hooks deterministic and testable.
-
----
+- Use `useXxx` for all hooks.
+- Use `use<Domain><Resource>Query` for TanStack Query readers.
+- Use `use<Domain><Action>Mutation` for TanStack Query writers.
+- Use `use<Feature>Stream` for SSE/fetch-stream logic.
+- Use `use<Feature>Filters` only when filter state is reused or complex.
 
 ## Data Fetching
 
-Feature data-fetching hooks should wrap React Query:
+- Use TanStack Query for server reads and writes.
+- Centralize query keys and query option factories inside the relevant feature folder.
+- Mutations must invalidate or update affected queries explicitly.
+- Use polling for long-running document/report tasks when SSE is not available.
+- Keep generated API calls in `api/generated/`; wrap them in feature-level query functions when UI needs domain-specific behavior.
 
-```ts
-export function useKnowledgeSearch(query: string) {
-  return useQuery({
-    queryKey: ["knowledge", "search", query],
-    queryFn: () => searchKnowledge(query),
-    enabled: query.trim().length > 0,
-  });
-}
+Example organization:
+
+```txt
+features/knowledge/
+  knowledge.queries.ts
+  knowledge.mutations.ts
+  hooks/
+    use-document-processing-status.ts
 ```
 
-Rules:
+## SSE and Streaming
 
-- Query keys must include the feature name and all variables that affect the result.
-- API functions should live outside components and hooks.
-- Mutations must invalidate or update relevant queries explicitly.
-- Do not call domain services directly; use the gateway API client.
-- Normalize API errors before exposing them to components.
+- Put shared stream handling in `lib/sse.ts`.
+- Use explicit event types: `start`, `delta`, `citation`, `reasoning`, `progress`, `done`, `error`.
+- Streaming hooks must support cancellation through `AbortController`.
+- Streaming hooks must expose enough state for UI: `status`, `content`, `progress`, `error`, and domain-specific payloads such as `citations` or generated sections.
+- Never assume a stream completes successfully. Handle partial content and user cancellation.
 
----
+## Form Hooks
 
-## Naming Conventions
-
-- Data query hooks: `use<Resource>` or `use<Resource><Action>`, for example `useKnowledgeSearch`.
-- Mutation hooks: `use<Action><Resource>`, for example `useUploadFile`.
-- UI behavior hooks: `useDebouncedValue`, `useDisclosure`, `useKeyboardShortcut`.
-- Avoid vague names such as `useData`, `useManager`, or `useHelper`.
-
----
-
-## Side Effects
-
-- Keep `useEffect` dependencies complete.
-- Prefer event handlers for user actions instead of effect-driven workflows.
-- Avoid effects that synchronize two pieces of local state when derived values would work.
-- Use `AbortController` or React Query cancellation where applicable.
-- Do not suppress lint rules for hooks without a comment explaining the invariant.
-
----
+- Use React Hook Form directly in forms unless the form has reusable domain behavior.
+- Keep Zod schemas next to the feature form or in `features/<domain>/schemas/`.
+- Do not duplicate schema defaults between hooks and components; export default values from the schema module when needed.
 
 ## Common Mistakes
 
-- Fetching data directly in components without a feature hook.
-- Hiding too much behavior in a hook named generically.
-- Using `useEffect` to derive values that can be computed during render.
-- Forgetting to invalidate React Query caches after mutations.
-- Returning positional tuples with unclear meaning.
+- Creating hooks that only wrap one `useState` call and are never reused.
+- Hiding query invalidation inside unrelated UI components.
+- Storing API responses in local component state instead of using TanStack Query.
+- Forgetting cleanup for streams, polling, timers, or event listeners.

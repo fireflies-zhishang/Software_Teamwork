@@ -1,115 +1,120 @@
 # Directory Structure
 
-> How the React + TypeScript frontend is organized.
+> Frontend module organization and file layout.
 
----
+## Standard Layout
 
-## Overview
+This repository is expected to contain both frontend and backend code, so do not put frontend source directly under repository-root `src/`. Use `apps/web/` as the frontend application root. Backend code should live in its own sibling app/service directory selected by the backend stack.
 
-Frontend code lives under `apps/frontend/`. The application should use a
-feature-first structure so knowledge, file, Q&A, document, and auth workflows
-can evolve independently.
+Use this structure when creating the frontend application:
 
-The specific build tool is not selected yet. Avoid build-tool-specific
-directory assumptions in shared specs unless the project later chooses one.
-
----
-
-## Directory Layout
-
-```text
-apps/frontend/
-├── package.json
-├── src/
-│   ├── app/
-│   ├── routes/
-│   ├── features/
-│   │   ├── auth/
-│   │   ├── files/
-│   │   ├── knowledge/
-│   │   ├── qa/
-│   │   └── documents/
-│   ├── shared/
-│   │   ├── api/
-│   │   ├── components/
-│   │   ├── hooks/
-│   │   ├── lib/
-│   │   └── types/
-│   ├── assets/
-│   └── styles/
-└── README.md
+```txt
+apps/
+  web/
+    package.json
+    vite.config.ts
+    tsconfig.json
+    src/
+      app/
+        router.tsx
+        providers.tsx
+        query-client.ts
+      layouts/
+        app-layout.tsx
+        auth-layout.tsx
+      pages/
+        login/
+        knowledge/
+          libraries/
+          documents/
+          chunks/
+          search/
+        qa/
+          chat/
+          retrieval-test/
+          settings/
+        reports/
+          generate/
+          records/
+          templates/
+        system/
+          users/
+          roles/
+          settings/
+      components/
+        ui/
+        common/
+        data-table/
+        file-upload/
+        markdown/
+        rich-editor/
+        charts/
+      features/
+        auth/
+        knowledge/
+        qa/
+        reports/
+        system/
+      api/
+        client.ts
+        generated/
+      stores/
+        auth-store.ts
+        ui-store.ts
+        chat-store.ts
+      lib/
+        utils.ts
+        permissions.ts
+        sse.ts
+        download.ts
 ```
 
-Directory responsibilities:
+## Responsibilities
 
-| Directory | Responsibility |
-|-----------|----------------|
-| `src/app/` | Application providers, global setup, error boundaries |
-| `src/routes/` | Route definitions and route-level screens |
-| `src/features/<feature>/` | Feature-specific UI, hooks, API wrappers, and types |
-| `src/shared/api/` | Gateway HTTP client and cross-feature API primitives |
-| `src/shared/components/` | Domain-neutral reusable UI components |
-| `src/shared/hooks/` | Domain-neutral reusable hooks |
-| `src/shared/lib/` | Small utilities with no React dependency unless necessary |
-| `src/shared/types/` | Cross-feature TypeScript types |
-| `src/assets/` | Static assets |
-| `src/styles/` | Global styles and design tokens |
+- `apps/web/`: frontend application root.
+- `apps/web/src/app/`: application wiring only: router, providers, query client, global error boundaries.
+- `apps/web/src/layouts/`: route shells such as authenticated AppShell and unauthenticated AuthLayout.
+- `apps/web/src/pages/`: route-level composition. Pages should orchestrate feature components, not contain reusable business logic.
+- `apps/web/src/features/`: domain-specific components, hooks, schemas, and helpers grouped by product module.
+- `apps/web/src/components/ui/`: shadcn/ui generated primitives. Keep them generic.
+- `apps/web/src/components/common/`: cross-domain reusable UI with minimal product assumptions.
+- `apps/web/src/components/data-table/`: table shell, filters, pagination, column helpers, row actions.
+- `apps/web/src/components/file-upload/`: reusable upload/dropzone components and progress UI.
+- `apps/web/src/components/markdown/`: markdown renderer, citation renderer, code block renderer.
+- `apps/web/src/components/rich-editor/`: TipTap editor shell, toolbar, report/table extensions.
+- `apps/web/src/components/charts/`: shared chart wrappers and dashboard metric components.
+- `apps/web/src/api/generated/`: generated OpenAPI client/types. Do not manually edit generated files.
+- `apps/web/src/stores/`: small Zustand stores for durable UI/client state only.
+- `apps/web/src/lib/`: framework-agnostic utilities.
 
----
+## Module Boundaries
 
-## Feature Organization
-
-Feature folders should follow this pattern when complexity requires it:
-
-```text
-src/features/knowledge/
-├── api/
-├── components/
-├── hooks/
-├── pages/
-├── types.ts
-└── index.ts
-```
-
-Rules:
-
-- Keep feature-specific components inside the feature.
-- Promote UI to `shared/components` only when at least two features use it.
-- Keep API calls close to the feature unless they are cross-feature primitives.
-- Export only intentional public feature APIs from `index.ts`.
-- Do not import from another feature's private files. Use its public exports or shared code.
-
----
-
-## API Layer
-
-Browser code must call the gateway service only. It must not call `auth`,
-`file`, `qa`, `knowledge`, or `document` services directly.
-
-API responsibilities:
-
-- Build request URLs relative to the configured gateway base URL.
-- Attach authentication headers through one shared mechanism.
-- Normalize errors into frontend-friendly error types.
-- Validate response shapes where data is complex or user-visible.
-
----
+- Knowledge management code lives under `apps/web/src/features/knowledge/` and `apps/web/src/pages/knowledge/`.
+- Intelligent Q&A code lives under `apps/web/src/features/qa/` and `apps/web/src/pages/qa/`.
+- Report generation code lives under `apps/web/src/features/reports/` and `apps/web/src/pages/reports/`.
+- Auth and RBAC helpers live under `apps/web/src/features/auth/`, `apps/web/src/stores/auth-store.ts`, and `apps/web/src/lib/permissions.ts`.
+- Shared UI must not import feature modules.
 
 ## Naming Conventions
 
-- React components use PascalCase: `KnowledgeSearchPanel.tsx`.
-- Hooks use `use` prefix: `useKnowledgeSearch.ts`.
-- Utility files use camelCase or kebab-case consistently within a directory.
-- Feature directories use lowercase plural nouns when they represent resource collections: `files`, `documents`.
-- Type files may use `types.ts` for feature-local types.
-- Test files sit next to the code they cover and use `.test.ts` or `.test.tsx`.
+- Use kebab-case for files and folders: `report-outline-editor.tsx`.
+- Use PascalCase for React components: `ReportOutlineEditor`.
+- Use `*.schema.ts` for Zod schemas.
+- Use `*.types.ts` only when types are shared by multiple files and are not generated.
+- Use `*.queries.ts` for TanStack Query option factories and query keys.
+- Use `*.mutations.ts` for mutation helpers when a module has multiple write operations.
+- Use `use-*.ts` for hooks.
 
----
+## Page Organization
 
-## Common Mistakes
+Each non-trivial page directory may contain:
 
-- Putting feature-specific components into `shared/components` too early.
-- Calling backend domain services directly from the browser.
-- Letting route components contain all data fetching, transformation, and UI logic.
-- Creating circular imports between features.
-- Encoding build-tool-specific assumptions before the build tool is selected.
+```txt
+page.tsx
+components/
+hooks/
+schemas/
+utils.ts
+```
+
+Move reusable domain logic from page-local folders into `features/<domain>/` once it is used by more than one page.

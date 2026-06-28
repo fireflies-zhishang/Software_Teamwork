@@ -98,7 +98,7 @@ check 名称补入 `contexts`。
   ],
   "pathLabels": [
     {
-      "paths": ["apps/frontend/**"],
+      "paths": ["apps/web/**"],
       "labels": ["frontend"]
     }
   ]

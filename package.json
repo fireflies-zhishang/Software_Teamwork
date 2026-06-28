@@ -1,0 +1,14 @@
+{
+  "private": true,
+  "packageManager": "bun@1.3.12",
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "dev:web": "bun run --cwd apps/web dev",
+    "build:web": "bun run --cwd apps/web build",
+    "lint:web": "bun run --cwd apps/web lint",
+    "typecheck:web": "bun run --cwd apps/web typecheck",
+    "check:web": "bun run --cwd apps/web check"
+  }
+}

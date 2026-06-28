@@ -1,0 +1,14 @@
+node_modules
+dist
+build
+coverage
+
+apps/web/node_modules
+apps/web/dist
+apps/web/build
+apps/web/coverage
+
+bun.lock
+bun.lockb
+apps/web/bun.lock
+apps/web/bun.lockb

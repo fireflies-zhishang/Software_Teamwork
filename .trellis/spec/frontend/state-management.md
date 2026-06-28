@@ -1,105 +1,76 @@
 # State Management
 
-> How frontend state is managed.
-
----
-
-## Overview
-
-Use the smallest state scope that fits the problem. Server data should be
-managed as server state, not copied into global client state.
-
-Default choices:
-
-- Local component state for local UI behavior.
-- URL state for shareable filters, selected tabs, and navigation state.
-- React Query for server state.
-- Minimal global client state only for cross-cutting UI/session concerns.
-
----
+> Rules for local, URL, server, persisted, and global state.
 
 ## State Categories
 
-| Category | Examples | Preferred Owner |
-|----------|----------|-----------------|
-| Local UI state | dialog open, selected row, temporary input | component or feature hook |
-| URL state | search query, page, filters, selected knowledge base | router/search params |
-| Server state | current user, file list, knowledge search results | React Query |
-| Global client state | theme, sidebar state, lightweight auth view state | small store or context |
-| Form state | upload form, document generation form | form library or component-local state |
-
----
-
-## Local State
-
-- Keep local state close to the component that owns it.
-- Derive values during render when possible.
-- Avoid duplicating props into state.
-- Reset local state intentionally when route or resource identity changes.
-
----
-
-## URL State
-
-Use URL state for values users may bookmark, share, or return to:
-
-- search text,
-- filters,
-- pagination,
-- selected tab,
-- selected knowledge base.
-
-Do not put sensitive tokens or large serialized objects in the URL.
-
----
+| Category | Owner | Examples |
+| --- | --- | --- |
+| Server state | TanStack Query | Knowledge bases, documents, report records, user profile, settings. |
+| Local UI state | React state | Dialog open state, active tab, local form toggles. |
+| URL state | TanStack Router search params | Filters, pagination, selected tab when shareable/bookmarkable. |
+| Global client state | Zustand | Sidebar collapsed state, theme, chat draft/session cache, auth shell hints. |
+| Form state | React Hook Form | Login, knowledge base settings, model config, report parameters. |
+| Persisted browser state | Zustand persist or IndexedDB/localStorage | Chat session list, local drafts, UI preferences. |
 
 ## Server State
 
-Use React Query for:
+- Server-owned data belongs in TanStack Query.
+- Prefer query invalidation after mutations over manually synchronizing many local stores.
+- Use query keys that include all relevant filters and route params.
+- Use optimistic updates only for low-risk UI interactions with clear rollback behavior.
 
-- fetching gateway API data,
-- caching knowledge search results,
-- file upload status polling,
-- document generation status polling,
-- current user/session data when loaded from the backend.
+## URL State
 
-Rules:
+Put state in the URL when:
 
-- Query keys must be stable and specific.
-- Mutations must invalidate or update related queries.
-- Components should not manually duplicate server data into global state.
-- Loading, empty, error, and success states must all be represented in UI.
+- The state affects list contents.
+- The state should survive refresh.
+- The state should be shareable or bookmarkable.
 
----
+Examples: table page, page size, search keyword, document status filter, knowledge base type, retrieval test parameters when useful.
 
-## When To Use Global State
+## Zustand
 
-Use global state only when:
+Use Zustand for small global client state only:
 
-- unrelated parts of the app need the same client-only state,
-- prop drilling crosses multiple unrelated layout boundaries,
-- the state is not server state and cannot be represented in the URL.
+- Current UI theme and sidebar state.
+- Chat local session list and unsent drafts.
+- Lightweight auth shell state derived from `/api/me`.
+- Cross-route UI preferences.
 
-Examples:
+Do not put paginated lists, documents, report records, model settings, or permission matrices in Zustand if they come from the backend.
 
-- active theme,
-- collapsed navigation,
-- app-level notification queue,
-- short-lived auth UI state.
+## Chat State
 
-Avoid global state for:
+- Store server-backed chat history through backend APIs when available.
+- Use local persistence for client-only drafts and temporary session recovery.
+- Message state should distinguish `pending`, `streaming`, `done`, and `error`.
+- Persist enough metadata to restore sessions after refresh, but avoid caching sensitive documents or credentials in localStorage.
 
-- API response caches,
-- form drafts local to one page,
-- derived values,
-- values that belong in route params.
+Recommended shape:
 
----
+```ts
+type ChatMessage = {
+  id: string
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  status: 'pending' | 'streaming' | 'done' | 'error'
+  citations?: Citation[]
+  reasoningSteps?: ReasoningStep[]
+  createdAt: string
+}
+```
+
+## Long-Running Tasks
+
+- Document parsing/vectorization and report generation must expose explicit frontend states.
+- Prefer backend task status endpoints or SSE events over inferred frontend timers.
+- UI should show progress, retry/failure actions, and final output links where available.
 
 ## Common Mistakes
 
-- Copying React Query data into a global store.
-- Storing filters in component state when they should be shareable through the URL.
-- Adding global state before two unrelated areas need it.
-- Keeping stale local state after resource IDs change.
-- Representing loading and error states only through ad hoc booleans scattered across components.
+- Mirroring TanStack Query data into Zustand.
+- Keeping filters only in component state when they should survive refresh.
+- Persisting secrets, API keys, or sensitive source content in browser storage.
+- Treating streaming content as a final answer before the `done` event.
