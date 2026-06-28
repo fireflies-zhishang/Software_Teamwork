@@ -140,3 +140,36 @@ Documented auth service gateway contracts, Redis-backed session cache behavior, 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 5: Mark missing downstream API contracts
+
+**Date**: 2026-06-28
+**Task**: Mark missing downstream API contracts
+**Branch**: `docs/gateway-contract-first`
+
+### Summary
+
+Reduced active gateway OpenAPI contracts to auth, gateway health, and file-owned routes while marking knowledge, QA, document, and admin interfaces as missing placeholders.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `54f3d85` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
