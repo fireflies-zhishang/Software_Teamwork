@@ -13,9 +13,9 @@
 | 对象存储协调 | 生成服务端 object key，管理 bucket/object 写入、读取和删除，不向前端暴露内部存储路径。 |
 | 文件下载 | 根据文档 ID、用户上下文和权限校验结果返回原始文件流。 |
 | 文件删除 | 负责文件元数据生命周期和原始对象删除或延迟清理流程。 |
-| 上传工作流入口 | 与 `knowledge` 服务协作启动后续解析、切片、向量化流程。 |
+| 上传工作流入口 | 保存原始文件并为后续 `knowledge` ingestion 预留上下文；handoff 契约暂缺。 |
 
-`file` 不负责知识库 CRUD、文档解析、文本切片、embedding、向量索引、RAG、问答生成或报告内容生成。`knowledge` 服务拥有文档处理状态、chunks 和索引状态；`file` 服务只拥有原始文件和文件元数据。
+`file` 不负责知识库 CRUD、文档解析、文本切片、embedding、向量索引、RAG、问答生成或报告内容生成。`knowledge` 服务预计拥有文档处理状态、chunks 和索引状态，但这些前后端接口尚未最终确定；`file` 服务当前只承诺原始文件和 file-owned 元数据契约。
 
 ## 接入模型
 
@@ -31,7 +31,7 @@ file service
    |
    +--> PostgreSQL metadata
    +--> MinIO object storage
-   +--> knowledge service ingestion handoff
+   +--> knowledge service ingestion handoff (missing/TBD)
 ```
 
 前端侧调用 gateway 公开接口；gateway 将认证后的请求转发给 file，并统一处理响应 envelope、request id 和错误归一化。
@@ -53,18 +53,18 @@ Gateway 调用 file 服务时应传递：
 
 | Method | Gateway Path | Auth | Owner | 说明 |
 | --- | --- | --- | --- | --- |
-| `POST` | `/api/v1/knowledge-bases/{knowledgeBaseId}/documents` | 需要 | `file` + `knowledge` | 上传文件到知识库。File 保存原始文件和元数据，knowledge 负责后续处理状态和索引。 |
+| `POST` | `/api/v1/knowledge-bases/{knowledgeBaseId}/documents` | 需要 | `file` | 上传文件到知识库上下文。File 保存原始文件和元数据；knowledge handoff 暂缺。 |
 | `PATCH` | `/api/v1/documents/{documentId}` | 需要 | `file` | 更新文件标签等 file-owned 元数据。 |
 | `DELETE` | `/api/v1/documents/{documentId}` | 需要 | `file` | 删除文档对应的原始文件和 file-owned 元数据。 |
 | `GET` | `/api/v1/documents/{documentId}/download` | 需要 | `file` | 下载原始文件。 |
 
-相关但非 file-owned 的公开接口：
+相关但非 file-owned 的公开接口暂缺：
 
 | Method | Gateway Path | Owner | 说明 |
 | --- | --- | --- | --- |
-| `GET` | `/api/v1/knowledge-bases/{knowledgeBaseId}/documents` | `knowledge` | 查询知识库内文档列表和处理状态。 |
-| `GET` | `/api/v1/documents/{documentId}` | `knowledge` | 查询文档详情和处理状态。 |
-| `GET` | `/api/v1/documents/{documentId}/chunks` | `knowledge` | 查询文档切片。 |
+| `GET` | `/api/v1/knowledge-bases/{knowledgeBaseId}/documents` | `knowledge` | 缺失：查询知识库内文档列表和处理状态的契约未定。 |
+| `GET` | `/api/v1/documents/{documentId}` | `knowledge` | 缺失：查询文档详情和处理状态的契约未定。 |
+| `GET` | `/api/v1/documents/{documentId}/chunks` | `knowledge` | 缺失：查询文档切片的契约未定。 |
 
 ## 通用响应结构
 
@@ -133,7 +133,7 @@ Content-Type: multipart/form-data
 uploaded | parsing | chunking | embedding | ready | failed
 ```
 
-`uploaded` 可由上传流程产生；`parsing`、`chunking`、`embedding`、`ready`、`failed` 由 `knowledge` 服务拥有并更新。File 服务不得自行伪造解析、切片或向量化状态。
+`uploaded` 可由上传流程产生；`parsing`、`chunking`、`embedding`、`ready`、`failed` 预留给后续 `knowledge` ingestion 契约。File 服务不得自行伪造解析、切片或向量化状态；在 knowledge 契约补齐前，前端不得依赖这些状态流转。
 
 ### DocumentSummary
 
@@ -213,7 +213,7 @@ Multipart fields:
 - 校验基础文件属性，例如文件名、大小、内容类型和空文件。
 - 生成服务端 object key，并将原始文件写入 MinIO。
 - 将 file-owned 元数据写入 PostgreSQL。
-- 向 `knowledge` 服务提交或触发 ingestion 入口。
+- 为后续 `knowledge` ingestion 记录必要上下文；实际 handoff 接口暂缺。
 - 返回文档公开 ID 和初始文档摘要。
 
 **Error**
@@ -234,7 +234,7 @@ Multipart fields:
 | `409` | `conflict` | 文件记录状态冲突，或同一业务范围不允许重复上传。 |
 | `429` | `rate_limited` | 上传频率、容量或配额超限。 |
 
-上述补充状态码加入 OpenAPI 前，前端不得作为公开契约依赖。MinIO、PostgreSQL 或 `knowledge` 服务不可用时，gateway 应归一化为 `dependency_error` 或 `internal_error`。
+上述补充状态码加入 OpenAPI 前，前端不得作为公开契约依赖。MinIO 或 PostgreSQL 不可用时，gateway 应归一化为 `dependency_error` 或 `internal_error`；`knowledge` handoff 失败语义待后续契约确定。
 
 ### PATCH /api/v1/documents/{documentId}
 
@@ -314,7 +314,7 @@ Authorization: Bearer <accessToken>
 | `403` | `forbidden` | 已认证但无权删除该文档。 |
 | `409` | `conflict` | 文档处于不允许删除的状态。 |
 
-上述补充状态码加入 OpenAPI 前，前端不得作为公开契约依赖。删除需要联动 `knowledge` 清理切片和索引时，file 服务不得自行操作 Qdrant；应通过 `knowledge` 拥有的接口或后续事件机制完成。
+上述补充状态码加入 OpenAPI 前，前端不得作为公开契约依赖。删除需要联动 `knowledge` 清理切片和索引时，file 服务不得自行操作 Qdrant；具体接口或事件机制暂缺。
 
 ### GET /api/v1/documents/{documentId}/download
 
@@ -369,7 +369,7 @@ Authorization: Bearer <accessToken>
 | --- | --- | --- |
 | `GET` | `/healthz` | file 进程存活检查。 |
 | `GET` | `/readyz` | file 就绪检查，应覆盖 PostgreSQL 和 MinIO 等关键依赖。 |
-| `POST` | `/internal/v1/knowledge-bases/{knowledgeBaseId}/documents` | 接收 gateway 转发的 multipart 上传请求。 |
+| `POST` | `/internal/v1/knowledge-bases/{knowledgeBaseId}/documents` | 接收 gateway 转发的 multipart 上传请求；knowledge handoff 暂缺。 |
 | `PATCH` | `/internal/v1/documents/{documentId}` | 更新 file-owned 元数据。 |
 | `DELETE` | `/internal/v1/documents/{documentId}` | 删除文件记录和原始对象，或标记删除并触发清理。 |
 | `GET` | `/internal/v1/documents/{documentId}/download` | 返回原始文件流给 gateway。 |
@@ -410,7 +410,7 @@ File 相关接口使用项目统一错误码：
 | `not_found` | `404` | 文档、知识库或原始对象不存在，或资源对当前用户隐藏。 |
 | `conflict` | `409` | 资源状态不允许当前操作，例如已删除或正在执行互斥流程。 |
 | `rate_limited` | `429` | 上传频率、容量、数量或租户配额超限。 |
-| `dependency_error` | `502` | PostgreSQL、MinIO、knowledge 服务或其他依赖失败并由 gateway 归一化。 |
+| `dependency_error` | `502` | PostgreSQL、MinIO 或其他已确定依赖失败并由 gateway 归一化；knowledge handoff 失败语义暂缺。 |
 | `internal_error` | `500` | 未预期服务端错误。 |
 
 ## 安全与日志要求

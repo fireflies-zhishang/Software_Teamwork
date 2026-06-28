@@ -162,6 +162,87 @@ gateway -> normalized SearchResponse or ErrorResponse
 - `docs/service-boundaries.md`
 - `docs/frontend-backend-contract.md`
 
+## Scenario: Missing Downstream API Contracts
+
+### 1. Scope / Trigger
+
+- Trigger: a downstream service such as `knowledge`, `qa`, `document`, or an
+  aggregation surface has not finalized its frontend/backend contract yet.
+- Applies to `docs/api/gateway.openapi.yaml`, `docs/gateway.md`,
+  `docs/service-boundaries.md`, and `docs/frontend-backend-contract.md`.
+
+### 2. Signatures
+
+Unfinalized endpoints must not be added as active `paths` operations in:
+
+```text
+docs/api/gateway.openapi.yaml
+```
+
+Instead, list them under the OpenAPI root extension:
+
+```yaml
+x-missing-contracts:
+  - service: knowledge
+    status: missing
+    reason: Frontend/backend contract is not finalized yet.
+    placeholderOperations:
+      - GET /api/v1/knowledge-bases
+```
+
+### 3. Contracts
+
+Active OpenAPI `paths` represent stable frontend-facing contracts. Missing
+placeholder operations are TODO markers only:
+
+- frontend clients must not generate callable methods from placeholders,
+- backend services must not treat placeholders as implementation commitments,
+- docs may describe expected ownership, but not stable request/response fields.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required handling |
+| --- | --- |
+| Endpoint request/response shape is finalized | Add an active OpenAPI operation with owner, schemas, and error responses. |
+| Endpoint owner is known but shape is not finalized | Keep it in `x-missing-contracts` only. |
+| Placeholder overlaps with an active operation | Use method-level placeholders, not broad path globs that hide stable operations. |
+| Frontend needs a missing endpoint | First finalize and review the OpenAPI operation, then generate or implement clients. |
+
+### 5. Good/Base/Bad Cases
+
+- Good: keep `POST /api/v1/knowledge-bases/{knowledgeBaseId}/documents` active
+  for file upload, while marking `GET /api/v1/knowledge-bases/{knowledgeBaseId}/documents`
+  missing for the future knowledge-owned list contract.
+- Base: mention future `qa` chat routes in prose and mark `/api/v1/chat/**`
+  missing until message and SSE event shapes are agreed.
+- Bad: add full `knowledge`, `qa`, or `document` schemas to OpenAPI as if they
+  were stable just to reserve routes.
+
+### 6. Tests Required
+
+For documentation-only contract changes:
+
+- Parse `docs/api/gateway.openapi.yaml`.
+- Verify every active `/api/v1/**` operation has an allowed finalized owner.
+- Verify missing downstream areas are present in `x-missing-contracts`.
+- Check broad placeholders do not contradict active operations.
+- Check Markdown links resolve.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+OpenAPI paths include POST /api/v1/chat/sessions/{sessionId}/stream
+even though QA message and SSE event contracts are not agreed.
+```
+
+#### Correct
+
+```text
+x-missing-contracts lists /api/v1/chat/** as missing until the QA contract is finalized.
+```
+
 ## Scenario: Domain Service Interface Documents
 
 ### 1. Scope / Trigger

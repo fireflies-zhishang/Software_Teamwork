@@ -7,64 +7,61 @@ info:
     url: https://github.com/Sakayori-Iroha-168/Software_Teamwork
   description: |
     Frontend-facing API contract for the gateway service.
-    This is a contract-first skeleton for parallel frontend and backend development.
+    This revision only treats gateway health checks, auth, and file-owned routes
+    as active contracts. Downstream knowledge, QA, document/report, and admin
+    aggregation interfaces are intentionally marked under x-missing-contracts
+    until their frontend/backend contracts are finalized.
 servers:
-  - url: /
-    description: Gateway root
+- url: /
+  description: Gateway root
 security:
-  - bearerAuth: []
+- bearerAuth: []
 tags:
-  - name: health
-    description: Gateway process and readiness checks.
-  - name: auth
-    description: Authentication and current user APIs owned by auth service.
-  - name: knowledge
-    description: Knowledge base and retrieval APIs owned by knowledge service.
-  - name: documents
-    description: Document upload, metadata, processing status, chunks, and downloads.
-  - name: chat
-    description: QA chat APIs owned by qa service.
-  - name: reports
-    description: Report generation APIs owned by document service.
-  - name: admin
-    description: Administration overview APIs.
+- name: health
+  description: Gateway process and readiness checks.
+- name: auth
+  description: Authentication and current user APIs owned by auth service.
+- name: documents
+  description: File-owned document upload, metadata, deletion, and download APIs.
 paths:
   /healthz:
     get:
-      tags: [health]
+      tags:
+      - health
       summary: Liveness check
       operationId: getHealthz
       security: []
       responses:
-        "200":
+        '200':
           description: Gateway process is alive.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/HealthResponse"
-        "429":
-          $ref: "#/components/responses/Error"
+                $ref: '#/components/schemas/HealthResponse'
+        '429':
+          $ref: '#/components/responses/Error'
   /readyz:
     get:
-      tags: [health]
+      tags:
+      - health
       summary: Readiness check
       operationId: getReadyz
       security: []
       responses:
-        "200":
+        '200':
           description: Gateway is ready to serve traffic.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/HealthResponse"
-        "429":
-          $ref: "#/components/responses/Error"
-        "503":
-          $ref: "#/components/responses/Error"
-
+                $ref: '#/components/schemas/HealthResponse'
+        '429':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
   /api/v1/auth/register:
     post:
-      tags: [auth]
+      tags:
+      - auth
       summary: Register a user
       operationId: registerUser
       security: []
@@ -74,19 +71,20 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/RegisterRequest"
+              $ref: '#/components/schemas/RegisterRequest'
       responses:
-        "201":
+        '201':
           description: User registered.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AuthResponse"
-        "400":
-          $ref: "#/components/responses/Error"
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/Error'
   /api/v1/auth/login:
     post:
-      tags: [auth]
+      tags:
+      - auth
       summary: Login
       operationId: login
       security: []
@@ -96,178 +94,64 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/LoginRequest"
+              $ref: '#/components/schemas/LoginRequest'
       responses:
-        "200":
+        '200':
           description: Login succeeded.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AuthResponse"
-        "400":
-          $ref: "#/components/responses/Error"
-        "401":
-          $ref: "#/components/responses/Error"
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
   /api/v1/auth/logout:
     post:
-      tags: [auth]
+      tags:
+      - auth
       summary: Logout
       operationId: logout
       x-owner-service: auth
       responses:
-        "204":
+        '204':
           description: Logout succeeded.
-        "401":
-          $ref: "#/components/responses/Error"
+        '401':
+          $ref: '#/components/responses/Error'
   /api/v1/auth/me:
     get:
-      tags: [auth]
+      tags:
+      - auth
       summary: Get current user
       operationId: getCurrentUser
       x-owner-service: auth
       responses:
-        "200":
+        '200':
           description: Current user.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/UserResponse"
-        "401":
-          $ref: "#/components/responses/Error"
-
-  /api/v1/knowledge-bases:
-    get:
-      tags: [knowledge]
-      summary: List knowledge bases
-      operationId: listKnowledgeBases
-      x-owner-service: knowledge
-      parameters:
-        - $ref: "#/components/parameters/Page"
-        - $ref: "#/components/parameters/PageSize"
-        - $ref: "#/components/parameters/Keyword"
-        - name: type
-          in: query
-          schema:
-            type: string
-          description: Optional knowledge base type filter.
-      responses:
-        "200":
-          description: Knowledge base list.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/KnowledgeBaseListResponse"
-        "401":
-          $ref: "#/components/responses/Error"
-    post:
-      tags: [knowledge]
-      summary: Create knowledge base
-      operationId: createKnowledgeBase
-      x-owner-service: knowledge
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateKnowledgeBaseRequest"
-      responses:
-        "201":
-          description: Knowledge base created.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/KnowledgeBaseResponse"
-        "400":
-          $ref: "#/components/responses/Error"
-  /api/v1/knowledge-bases/{knowledgeBaseId}:
-    parameters:
-      - $ref: "#/components/parameters/KnowledgeBaseId"
-    get:
-      tags: [knowledge]
-      summary: Get knowledge base
-      operationId: getKnowledgeBase
-      x-owner-service: knowledge
-      responses:
-        "200":
-          description: Knowledge base details.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/KnowledgeBaseResponse"
-        "404":
-          $ref: "#/components/responses/Error"
-    patch:
-      tags: [knowledge]
-      summary: Update knowledge base
-      operationId: updateKnowledgeBase
-      x-owner-service: knowledge
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateKnowledgeBaseRequest"
-      responses:
-        "200":
-          description: Knowledge base updated.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/KnowledgeBaseResponse"
-        "400":
-          $ref: "#/components/responses/Error"
-        "404":
-          $ref: "#/components/responses/Error"
-    delete:
-      tags: [knowledge]
-      summary: Delete knowledge base
-      operationId: deleteKnowledgeBase
-      x-owner-service: knowledge
-      responses:
-        "204":
-          description: Knowledge base deleted.
-        "404":
-          $ref: "#/components/responses/Error"
-
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/Error'
   /api/v1/knowledge-bases/{knowledgeBaseId}/documents:
     parameters:
-      - $ref: "#/components/parameters/KnowledgeBaseId"
-    get:
-      tags: [documents]
-      summary: List documents in a knowledge base
-      operationId: listKnowledgeBaseDocuments
-      x-owner-service: knowledge
-      parameters:
-        - $ref: "#/components/parameters/Page"
-        - $ref: "#/components/parameters/PageSize"
-        - name: status
-          in: query
-          schema:
-            $ref: "#/components/schemas/DocumentStatus"
-      responses:
-        "200":
-          description: Document list.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DocumentListResponse"
-        "404":
-          $ref: "#/components/responses/Error"
+    - $ref: '#/components/parameters/KnowledgeBaseId'
     post:
-      tags: [documents]
+      tags:
+      - documents
       summary: Upload a document to a knowledge base
       operationId: uploadKnowledgeBaseDocument
       x-owner-service: file
-      description: |
-        Gateway exposes the upload workflow. File service owns raw upload and metadata;
-        knowledge service owns ingestion and indexing state.
+      description: Gateway exposes the file upload workflow. File service owns raw upload and file metadata. Knowledge ingestion/indexing handoff is intentionally missing until the knowledge service contract is finalized.
       requestBody:
         required: true
         content:
           multipart/form-data:
             schema:
               type: object
-              required: [file]
+              required:
+              - file
               properties:
                 file:
                   type: string
@@ -277,34 +161,20 @@ paths:
                   items:
                     type: string
       responses:
-        "201":
+        '201':
           description: Document accepted for processing.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DocumentResponse"
-        "400":
-          $ref: "#/components/responses/Error"
-
+                $ref: '#/components/schemas/DocumentResponse'
+        '400':
+          $ref: '#/components/responses/Error'
   /api/v1/documents/{documentId}:
     parameters:
-      - $ref: "#/components/parameters/DocumentId"
-    get:
-      tags: [documents]
-      summary: Get document metadata and processing status
-      operationId: getDocument
-      x-owner-service: knowledge
-      responses:
-        "200":
-          description: Document details.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DocumentResponse"
-        "404":
-          $ref: "#/components/responses/Error"
+    - $ref: '#/components/parameters/DocumentId'
     patch:
-      tags: [documents]
+      tags:
+      - documents
       summary: Update document tags
       operationId: updateDocument
       x-owner-service: file
@@ -313,389 +183,49 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/UpdateDocumentRequest"
+              $ref: '#/components/schemas/UpdateDocumentRequest'
       responses:
-        "200":
+        '200':
           description: Document updated.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DocumentResponse"
-        "404":
-          $ref: "#/components/responses/Error"
+                $ref: '#/components/schemas/DocumentResponse'
+        '404':
+          $ref: '#/components/responses/Error'
+      description: Update file-owned document metadata only. Knowledge-owned document processing fields are missing until finalized.
     delete:
-      tags: [documents]
+      tags:
+      - documents
       summary: Delete document
       operationId: deleteDocument
       x-owner-service: file
       responses:
-        "204":
+        '204':
           description: Document deleted.
-        "404":
-          $ref: "#/components/responses/Error"
-  /api/v1/documents/{documentId}/chunks:
-    get:
-      tags: [documents]
-      summary: List document chunks
-      operationId: listDocumentChunks
-      x-owner-service: knowledge
-      parameters:
-        - $ref: "#/components/parameters/DocumentId"
-        - $ref: "#/components/parameters/Page"
-        - $ref: "#/components/parameters/PageSize"
-      responses:
-        "200":
-          description: Document chunks.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DocumentChunkListResponse"
-        "404":
-          $ref: "#/components/responses/Error"
+        '404':
+          $ref: '#/components/responses/Error'
+      description: Delete the file-owned document record and original object. Knowledge index cleanup contract is missing until finalized.
   /api/v1/documents/{documentId}/download:
     get:
-      tags: [documents]
+      tags:
+      - documents
       summary: Download original document
       operationId: downloadDocument
       x-owner-service: file
       parameters:
-        - $ref: "#/components/parameters/DocumentId"
+      - $ref: '#/components/parameters/DocumentId'
       responses:
-        "200":
+        '200':
           description: Original file stream.
           content:
             application/octet-stream:
               schema:
                 type: string
                 format: binary
-        "404":
-          $ref: "#/components/responses/Error"
-
-  /api/v1/search:
-    post:
-      tags: [knowledge]
-      summary: Search knowledge bases
-      operationId: searchKnowledge
-      x-owner-service: knowledge
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SearchRequest"
-      responses:
-        "200":
-          description: Search results.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SearchResponse"
-        "400":
-          $ref: "#/components/responses/Error"
-
-  /api/v1/chat/sessions:
-    get:
-      tags: [chat]
-      summary: List chat sessions
-      operationId: listChatSessions
-      x-owner-service: qa
-      parameters:
-        - $ref: "#/components/parameters/Page"
-        - $ref: "#/components/parameters/PageSize"
-      responses:
-        "200":
-          description: Chat session list.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ChatSessionListResponse"
-        "401":
-          $ref: "#/components/responses/Error"
-    post:
-      tags: [chat]
-      summary: Create chat session
-      operationId: createChatSession
-      x-owner-service: qa
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateChatSessionRequest"
-      responses:
-        "201":
-          description: Chat session created.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ChatSessionResponse"
-        "400":
-          $ref: "#/components/responses/Error"
-        "401":
-          $ref: "#/components/responses/Error"
-  /api/v1/chat/sessions/{sessionId}:
-    parameters:
-      - $ref: "#/components/parameters/SessionId"
-    get:
-      tags: [chat]
-      summary: Get chat session
-      operationId: getChatSession
-      x-owner-service: qa
-      responses:
-        "200":
-          description: Chat session.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ChatSessionResponse"
-        "404":
-          $ref: "#/components/responses/Error"
-    delete:
-      tags: [chat]
-      summary: Delete chat session
-      operationId: deleteChatSession
-      x-owner-service: qa
-      responses:
-        "204":
-          description: Chat session deleted.
-        "404":
-          $ref: "#/components/responses/Error"
-  /api/v1/chat/sessions/{sessionId}/messages:
-    post:
-      tags: [chat]
-      summary: Send a chat message and receive a non-streaming answer
-      operationId: createChatMessage
-      x-owner-service: qa
-      parameters:
-        - $ref: "#/components/parameters/SessionId"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateChatMessageRequest"
-      responses:
-        "200":
-          description: Chat answer.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ChatMessageResponse"
-        "400":
-          $ref: "#/components/responses/Error"
-        "401":
-          $ref: "#/components/responses/Error"
-  /api/v1/chat/sessions/{sessionId}/stream:
-    post:
-      tags: [chat]
-      summary: Send a chat message and receive a streaming answer
-      operationId: streamChatMessage
-      x-owner-service: qa
-      parameters:
-        - $ref: "#/components/parameters/SessionId"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateChatMessageRequest"
-      responses:
-        "200":
-          description: Server-sent event stream.
-          content:
-            text/event-stream:
-              schema:
-                type: string
-                description: SSE events using progress, message, citation, done, and error event types.
-        "400":
-          $ref: "#/components/responses/Error"
-
-  /api/v1/reports:
-    get:
-      tags: [reports]
-      summary: List report records
-      operationId: listReports
-      x-owner-service: document
-      parameters:
-        - $ref: "#/components/parameters/Page"
-        - $ref: "#/components/parameters/PageSize"
-      responses:
-        "200":
-          description: Report list.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ReportListResponse"
-        "401":
-          $ref: "#/components/responses/Error"
-    post:
-      tags: [reports]
-      summary: Create report record
-      operationId: createReport
-      x-owner-service: document
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateReportRequest"
-      responses:
-        "201":
-          description: Report created.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ReportResponse"
-        "400":
-          $ref: "#/components/responses/Error"
-        "401":
-          $ref: "#/components/responses/Error"
-  /api/v1/reports/{reportId}:
-    parameters:
-      - $ref: "#/components/parameters/ReportId"
-    get:
-      tags: [reports]
-      summary: Get report record
-      operationId: getReport
-      x-owner-service: document
-      responses:
-        "200":
-          description: Report details.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ReportResponse"
-        "404":
-          $ref: "#/components/responses/Error"
-    patch:
-      tags: [reports]
-      summary: Update report record
-      operationId: updateReport
-      x-owner-service: document
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateReportRequest"
-      responses:
-        "200":
-          description: Report updated.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ReportResponse"
-        "400":
-          $ref: "#/components/responses/Error"
-        "404":
-          $ref: "#/components/responses/Error"
-    delete:
-      tags: [reports]
-      summary: Delete report record
-      operationId: deleteReport
-      x-owner-service: document
-      responses:
-        "204":
-          description: Report deleted.
-        "404":
-          $ref: "#/components/responses/Error"
-  /api/v1/reports/{reportId}/outline:
-    post:
-      tags: [reports]
-      summary: Generate or regenerate report outline
-      operationId: generateReportOutline
-      x-owner-service: document
-      parameters:
-        - $ref: "#/components/parameters/ReportId"
-      responses:
-        "200":
-          description: Report outline.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ReportOutlineResponse"
-        "400":
-          $ref: "#/components/responses/Error"
-        "404":
-          $ref: "#/components/responses/Error"
-  /api/v1/reports/{reportId}/sections/{sectionId}/stream:
-    post:
-      tags: [reports]
-      summary: Generate report section content as an event stream
-      operationId: streamReportSection
-      x-owner-service: document
-      parameters:
-        - $ref: "#/components/parameters/ReportId"
-        - $ref: "#/components/parameters/SectionId"
-      responses:
-        "200":
-          description: Server-sent event stream.
-          content:
-            text/event-stream:
-              schema:
-                type: string
-                description: SSE events using progress, message, done, and error event types.
-        "400":
-          $ref: "#/components/responses/Error"
-        "404":
-          $ref: "#/components/responses/Error"
-  /api/v1/reports/{reportId}/export:
-    post:
-      tags: [reports]
-      summary: Export report as DOCX
-      operationId: exportReport
-      x-owner-service: document
-      parameters:
-        - $ref: "#/components/parameters/ReportId"
-      responses:
-        "202":
-          description: Export job accepted.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ExportReportResponse"
-        "400":
-          $ref: "#/components/responses/Error"
-        "404":
-          $ref: "#/components/responses/Error"
-  /api/v1/reports/{reportId}/download:
-    get:
-      tags: [reports]
-      summary: Download exported report file
-      operationId: downloadReport
-      x-owner-service: document
-      parameters:
-        - $ref: "#/components/parameters/ReportId"
-      responses:
-        "200":
-          description: Exported report file stream.
-          content:
-            application/vnd.openxmlformats-officedocument.wordprocessingml.document:
-              schema:
-                type: string
-                format: binary
-        "404":
-          $ref: "#/components/responses/Error"
-
-  /api/v1/admin/overview:
-    get:
-      tags: [admin]
-      summary: Get administration overview metrics
-      operationId: getAdminOverview
-      x-owner-service: gateway
-      description: Gateway may aggregate read-only metrics from domain services.
-      responses:
-        "200":
-          description: Overview metrics.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AdminOverviewResponse"
-        "401":
-          $ref: "#/components/responses/Error"
-        "403":
-          $ref: "#/components/responses/Error"
-
+        '404':
+          $ref: '#/components/responses/Error'
+      description: Download the original file from the file service through gateway.
 components:
   securitySchemes:
     bearerAuth:
@@ -703,26 +233,6 @@ components:
       scheme: bearer
       bearerFormat: JWT
   parameters:
-    Page:
-      name: page
-      in: query
-      schema:
-        type: integer
-        minimum: 1
-        default: 1
-    PageSize:
-      name: pageSize
-      in: query
-      schema:
-        type: integer
-        minimum: 1
-        maximum: 100
-        default: 20
-    Keyword:
-      name: keyword
-      in: query
-      schema:
-        type: string
     KnowledgeBaseId:
       name: knowledgeBaseId
       in: path
@@ -735,39 +245,24 @@ components:
       required: true
       schema:
         type: string
-    SessionId:
-      name: sessionId
-      in: path
-      required: true
-      schema:
-        type: string
-    ReportId:
-      name: reportId
-      in: path
-      required: true
-      schema:
-        type: string
-    SectionId:
-      name: sectionId
-      in: path
-      required: true
-      schema:
-        type: string
   responses:
     Error:
       description: Error response.
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/ErrorResponse"
+            $ref: '#/components/schemas/ErrorResponse'
   schemas:
     HealthResponse:
       type: object
-      required: [data, requestId]
+      required:
+      - data
+      - requestId
       properties:
         data:
           type: object
-          required: [status]
+          required:
+          - status
           properties:
             status:
               type: string
@@ -776,25 +271,29 @@ components:
           type: string
     ErrorResponse:
       type: object
-      required: [error]
+      required:
+      - error
       properties:
         error:
-          $ref: "#/components/schemas/ErrorDetail"
+          $ref: '#/components/schemas/ErrorDetail'
     ErrorDetail:
       type: object
-      required: [code, message, requestId]
+      required:
+      - code
+      - message
+      - requestId
       properties:
         code:
           type: string
           enum:
-            - validation_error
-            - unauthorized
-            - forbidden
-            - not_found
-            - conflict
-            - rate_limited
-            - dependency_error
-            - internal_error
+          - validation_error
+          - unauthorized
+          - forbidden
+          - not_found
+          - conflict
+          - rate_limited
+          - dependency_error
+          - internal_error
         message:
           type: string
         requestId:
@@ -803,23 +302,11 @@ components:
           type: object
           additionalProperties:
             type: string
-    PageMeta:
-      type: object
-      required: [page, pageSize, total]
-      properties:
-        page:
-          type: integer
-          minimum: 1
-        pageSize:
-          type: integer
-          minimum: 1
-        total:
-          type: integer
-          minimum: 0
-
     RegisterRequest:
       type: object
-      required: [username, password]
+      required:
+      - username
+      - password
       properties:
         username:
           type: string
@@ -828,7 +315,9 @@ components:
           format: password
     LoginRequest:
       type: object
-      required: [username, password]
+      required:
+      - username
+      - password
       properties:
         username:
           type: string
@@ -837,7 +326,11 @@ components:
           format: password
     UserSummary:
       type: object
-      required: [id, username, roles, permissions]
+      required:
+      - id
+      - username
+      - roles
+      - permissions
       properties:
         id:
           type: string
@@ -853,7 +346,11 @@ components:
             type: string
     SessionSummary:
       type: object
-      required: [sessionId, accessToken, tokenType, expiresAt]
+      required:
+      - sessionId
+      - accessToken
+      - tokenType
+      - expiresAt
       properties:
         sessionId:
           type: string
@@ -862,125 +359,74 @@ components:
           description: Bearer credential sent by the frontend on later requests.
         tokenType:
           type: string
-          enum: [Bearer]
+          enum:
+          - Bearer
           default: Bearer
         expiresAt:
           type: string
           format: date-time
     AuthResponse:
       type: object
-      required: [data, requestId]
+      required:
+      - data
+      - requestId
       properties:
         data:
           type: object
-          required: [user, session]
+          required:
+          - user
+          - session
           properties:
             user:
-              $ref: "#/components/schemas/UserSummary"
+              $ref: '#/components/schemas/UserSummary'
             session:
-              $ref: "#/components/schemas/SessionSummary"
+              $ref: '#/components/schemas/SessionSummary'
         requestId:
           type: string
     UserResponse:
       type: object
-      required: [data, requestId]
+      required:
+      - data
+      - requestId
       properties:
         data:
-          $ref: "#/components/schemas/UserSummary"
+          $ref: '#/components/schemas/UserSummary'
         requestId:
           type: string
-
-    KnowledgeBaseType:
-      type: string
-      enum: [standard, report, terminology, general]
-    RetrievalStrategy:
-      type: string
-      enum: [vector, vector_rerank]
-    KnowledgeBaseSummary:
-      type: object
-      required: [id, name, type, documentCount, createdAt, createdBy]
-      properties:
-        id:
-          type: string
-        name:
-          type: string
-        description:
-          type: string
-        type:
-          $ref: "#/components/schemas/KnowledgeBaseType"
-        retrievalStrategy:
-          $ref: "#/components/schemas/RetrievalStrategy"
-        documentCount:
-          type: integer
-          minimum: 0
-        createdAt:
-          type: string
-          format: date-time
-        createdBy:
-          type: string
-    CreateKnowledgeBaseRequest:
-      type: object
-      required: [name, type]
-      properties:
-        name:
-          type: string
-        description:
-          type: string
-        type:
-          $ref: "#/components/schemas/KnowledgeBaseType"
-        retrievalStrategy:
-          $ref: "#/components/schemas/RetrievalStrategy"
-    UpdateKnowledgeBaseRequest:
-      type: object
-      properties:
-        name:
-          type: string
-        description:
-          type: string
-        retrievalStrategy:
-          $ref: "#/components/schemas/RetrievalStrategy"
-    KnowledgeBaseResponse:
-      type: object
-      required: [data, requestId]
-      properties:
-        data:
-          $ref: "#/components/schemas/KnowledgeBaseSummary"
-        requestId:
-          type: string
-    KnowledgeBaseListResponse:
-      type: object
-      required: [data, page, requestId]
-      properties:
-        data:
-          type: array
-          items:
-            $ref: "#/components/schemas/KnowledgeBaseSummary"
-        page:
-          $ref: "#/components/schemas/PageMeta"
-        requestId:
-          type: string
-
     DocumentStatus:
       type: string
-      enum: [uploaded, parsing, chunking, embedding, ready, failed]
+      enum:
+      - uploaded
+      - parsing
+      - chunking
+      - embedding
+      - ready
+      - failed
     DocumentSummary:
       type: object
-      required: [id, knowledgeBaseId, name, status, createdAt]
+      required:
+      - id
+      - knowledgeBaseId
+      - name
+      - status
+      - createdAt
       properties:
         id:
           type: string
         knowledgeBaseId:
           type: string
+          description: Target knowledge base context for this uploaded file. Knowledge-base APIs are missing until finalized.
         name:
           type: string
         status:
-          $ref: "#/components/schemas/DocumentStatus"
+          $ref: '#/components/schemas/DocumentStatus'
         tags:
           type: array
           items:
             type: string
         errorMessage:
           type: string
+          description: File-level processing or handoff error message. Knowledge-owned processing details are missing until finalized.
         createdAt:
           type: string
           format: date-time
@@ -993,305 +439,38 @@ components:
             type: string
     DocumentResponse:
       type: object
-      required: [data, requestId]
+      required:
+      - data
+      - requestId
       properties:
         data:
-          $ref: "#/components/schemas/DocumentSummary"
+          $ref: '#/components/schemas/DocumentSummary'
         requestId:
           type: string
-    DocumentListResponse:
-      type: object
-      required: [data, page, requestId]
-      properties:
-        data:
-          type: array
-          items:
-            $ref: "#/components/schemas/DocumentSummary"
-        page:
-          $ref: "#/components/schemas/PageMeta"
-        requestId:
-          type: string
-    DocumentChunk:
-      type: object
-      required: [id, documentId, content]
-      properties:
-        id:
-          type: string
-        documentId:
-          type: string
-        sectionPath:
-          type: string
-        content:
-          type: string
-        score:
-          type: number
-          format: float
-    DocumentChunkListResponse:
-      type: object
-      required: [data, page, requestId]
-      properties:
-        data:
-          type: array
-          items:
-            $ref: "#/components/schemas/DocumentChunk"
-        page:
-          $ref: "#/components/schemas/PageMeta"
-        requestId:
-          type: string
-
-    SearchRequest:
-      type: object
-      required: [query]
-      properties:
-        query:
-          type: string
-        knowledgeBaseIds:
-          type: array
-          items:
-            type: string
-        topK:
-          type: integer
-          minimum: 1
-        tags:
-          type: array
-          items:
-            type: string
-    SearchResult:
-      type: object
-      required: [documentId, content, score]
-      properties:
-        documentId:
-          type: string
-        documentName:
-          type: string
-        sectionPath:
-          type: string
-        content:
-          type: string
-        score:
-          type: number
-          format: float
-    SearchResponse:
-      type: object
-      required: [data, requestId]
-      properties:
-        data:
-          type: array
-          items:
-            $ref: "#/components/schemas/SearchResult"
-        requestId:
-          type: string
-
-    ChatSession:
-      type: object
-      required: [id, title, createdAt]
-      properties:
-        id:
-          type: string
-        title:
-          type: string
-        createdAt:
-          type: string
-          format: date-time
-    ChatMessage:
-      type: object
-      required: [id, role, content, createdAt]
-      properties:
-        id:
-          type: string
-        role:
-          type: string
-          enum: [user, assistant, system]
-        content:
-          type: string
-        createdAt:
-          type: string
-          format: date-time
-    CreateChatSessionRequest:
-      type: object
-      properties:
-        title:
-          type: string
-    CreateChatMessageRequest:
-      type: object
-      required: [content]
-      properties:
-        content:
-          type: string
-        knowledgeBaseIds:
-          type: array
-          items:
-            type: string
-    ChatSessionResponse:
-      type: object
-      required: [data, requestId]
-      properties:
-        data:
-          $ref: "#/components/schemas/ChatSession"
-        requestId:
-          type: string
-    ChatSessionListResponse:
-      type: object
-      required: [data, page, requestId]
-      properties:
-        data:
-          type: array
-          items:
-            $ref: "#/components/schemas/ChatSession"
-        page:
-          $ref: "#/components/schemas/PageMeta"
-        requestId:
-          type: string
-    ChatMessageResponse:
-      type: object
-      required: [data, requestId]
-      properties:
-        data:
-          $ref: "#/components/schemas/ChatMessage"
-        requestId:
-          type: string
-
-    ReportStatus:
-      type: string
-      enum: [draft, generating, ready, failed, exported]
-    ReportRecord:
-      type: object
-      required: [id, title, type, status, createdAt]
-      properties:
-        id:
-          type: string
-        title:
-          type: string
-        type:
-          type: string
-          enum: [summer_peak_inspection, coal_inventory_audit]
-        specialty:
-          type: string
-        plant:
-          type: string
-        year:
-          type: integer
-        status:
-          $ref: "#/components/schemas/ReportStatus"
-        createdAt:
-          type: string
-          format: date-time
-    CreateReportRequest:
-      type: object
-      required: [title, type]
-      properties:
-        title:
-          type: string
-        type:
-          type: string
-          enum: [summer_peak_inspection, coal_inventory_audit]
-        specialty:
-          type: string
-        plant:
-          type: string
-        year:
-          type: integer
-    UpdateReportRequest:
-      type: object
-      properties:
-        title:
-          type: string
-        specialty:
-          type: string
-        plant:
-          type: string
-        year:
-          type: integer
-    ReportSection:
-      type: object
-      required: [id, title, level]
-      properties:
-        id:
-          type: string
-        title:
-          type: string
-        level:
-          type: integer
-          minimum: 1
-        content:
-          type: string
-    ReportResponse:
-      type: object
-      required: [data, requestId]
-      properties:
-        data:
-          $ref: "#/components/schemas/ReportRecord"
-        requestId:
-          type: string
-    ReportListResponse:
-      type: object
-      required: [data, page, requestId]
-      properties:
-        data:
-          type: array
-          items:
-            $ref: "#/components/schemas/ReportRecord"
-        page:
-          $ref: "#/components/schemas/PageMeta"
-        requestId:
-          type: string
-    ReportOutlineResponse:
-      type: object
-      required: [data, requestId]
-      properties:
-        data:
-          type: object
-          required: [sections]
-          properties:
-            sections:
-              type: array
-              items:
-                $ref: "#/components/schemas/ReportSection"
-        requestId:
-          type: string
-    ExportReportResponse:
-      type: object
-      required: [data, requestId]
-      properties:
-        data:
-          type: object
-          required: [jobId, status]
-          properties:
-            jobId:
-              type: string
-            status:
-              type: string
-              example: accepted
-        requestId:
-          type: string
-
-    AdminOverviewResponse:
-      type: object
-      required: [data, requestId]
-      properties:
-        data:
-          type: object
-          properties:
-            userCount:
-              type: integer
-              minimum: 0
-            knowledgeBaseCount:
-              type: integer
-              minimum: 0
-            documentCount:
-              type: integer
-              minimum: 0
-            chunkCount:
-              type: integer
-              minimum: 0
-            reportTemplateCount:
-              type: integer
-              minimum: 0
-            reportCount:
-              type: integer
-              minimum: 0
-            qaCount:
-              type: integer
-              minimum: 0
-        requestId:
-          type: string
+x-missing-contracts:
+- service: knowledge
+  status: missing
+  reason: Frontend/backend contract is not finalized yet.
+  placeholderOperations:
+  - GET /api/v1/knowledge-bases
+  - POST /api/v1/knowledge-bases
+  - GET/PATCH/DELETE /api/v1/knowledge-bases/{knowledgeBaseId}
+  - GET /api/v1/knowledge-bases/{knowledgeBaseId}/documents
+  - GET /api/v1/documents/{documentId}
+  - GET /api/v1/documents/{documentId}/chunks
+  - POST /api/v1/search
+- service: qa
+  status: missing
+  reason: Frontend/backend chat and RAG contract is not finalized yet.
+  placeholderOperations:
+  - /api/v1/chat/**
+- service: document
+  status: missing
+  reason: Frontend/backend report-generation contract is not finalized yet.
+  placeholderOperations:
+  - /api/v1/reports/**
+- service: admin
+  status: missing
+  reason: Administration aggregation contract is not finalized yet.
+  placeholderOperations:
+  - /api/v1/admin/**

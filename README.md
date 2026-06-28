@@ -64,6 +64,8 @@ postgres + redis + qdrant + minio
 
 Gateway 基础契约文档：
 
+当前已确定的前后端公开契约只覆盖 gateway 健康检查、auth 和 file-owned 接口。`knowledge`、`qa`、`document` 和管理后台聚合接口仍在设计中，暂在 OpenAPI 中标记为缺失占位。
+
 - Gateway 服务规划：[docs/gateway.md](docs/gateway.md)
 - Auth 服务接口文档：[docs/auth.md](docs/auth.md)
 - File 服务接口文档：[docs/file.md](docs/file.md)

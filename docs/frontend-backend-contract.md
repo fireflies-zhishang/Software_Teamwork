@@ -18,6 +18,7 @@
 - 前端可以基于 OpenAPI 生成类型、mock server 或手写 API client。
 - 后端实现 endpoint 前，应先更新 OpenAPI。
 - 破坏性字段变更必须同步更新 OpenAPI 和本契约文档。
+- 本轮只把 gateway 健康检查、auth 和 file-owned 接口列为已确定契约；`knowledge`、`qa`、`document` 和管理后台聚合接口暂缺，见 OpenAPI 顶层 `x-missing-contracts`。
 
 ## 认证约定
 
@@ -105,7 +106,7 @@
 
 ## 分页、过滤和搜索
 
-列表接口使用 query 参数：
+分页、过滤和搜索属于下游服务契约的一部分，目前除通用响应 envelope 外暂未确定。后续补齐列表接口时，优先使用以下约定：
 
 ```text
 ?page=1&pageSize=20&keyword=xxx&status=ready
@@ -116,10 +117,11 @@
 - `keyword` 表示模糊搜索关键词。
 - 多值过滤可使用逗号分隔字符串，具体字段由 OpenAPI endpoint 定义。
 - 排序参数后续统一为 `sort`，例如 `sort=-createdAt`，本轮只保留扩展空间。
+- 在对应 OpenAPI path 补齐前，前端不得依赖知识库列表、检索、聊天、报告或管理后台聚合接口。
 
 ## SSE 与流式 UI
 
-流式接口用于问答和报告生成。前端处理原则：
+问答和报告生成的流式接口暂缺，当前 OpenAPI 不提供稳定 SSE endpoint。后续补齐时，前端处理原则如下：
 
 - 根据 `Content-Type: text/event-stream` 进入流式读取。
 - `message` 事件用于文本增量。
@@ -128,14 +130,15 @@
 - `done` 事件表示完成。
 - `error` 事件表示本次流式任务失败。
 
-断线重连、幂等恢复和任务恢复 ID 后续单独细化；当前 MVP 只要求前端能消费 gateway 暴露的 SSE endpoint。
+断线重连、幂等恢复和任务恢复 ID 后续单独细化；在 OpenAPI 补齐前，前端不应实现依赖 gateway SSE 路径的稳定调用。
 
 ## 文件上传与下载
 
 - 上传使用 `multipart/form-data`。
 - 上传 endpoint 由 gateway 暴露，实际文件对象归 `file` 服务管理。
-- 文档处理状态归 `knowledge` 服务管理。
-- 前端下载原文件或生成报告时，只使用 gateway 提供的下载 URL。
+- 文档处理状态、知识库列表和 ingestion handoff 归 `knowledge` 服务后续契约补齐；当前只稳定 file-owned 上传返回和原文件下载。
+- 前端下载原文件时，只使用 gateway 提供的下载接口。
+- 生成报告和报告文件下载接口暂缺，后续由 `document` 契约补齐。
 - 前端不得依赖 MinIO object key 或内部存储路径。
 
 ## Request ID
@@ -148,6 +151,7 @@
 
 并行开发时：
 
-- 前端以 OpenAPI mock 为准，不等待所有内部服务完成。
+- 前端以 OpenAPI 中已存在的 active paths 为准，不等待所有内部服务完成。
+- OpenAPI `x-missing-contracts` 中列出的范围只能作为待办，不应生成可调用 API client 方法。
 - 各后端服务以 gateway OpenAPI 和服务边界矩阵确认自己需要提供的能力。
 - 如果实现发现契约不合理，先更新 OpenAPI 和相关文档，再改代码。

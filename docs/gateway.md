@@ -16,13 +16,13 @@
 | 能力 | 说明 |
 | --- | --- |
 | Public API surface | 暴露前端使用的 `/api/v1/**` HTTP API。 |
-| Routing | 将请求转发到 `auth`、`file`、`knowledge`、`qa`、`document` 等内部服务。 |
+| Routing | 将已确定的公开请求转发到 `auth`、`file` 等内部服务；未定下游服务只保留缺失占位。 |
 | Auth context | 基于 Redis 会话缓存读取用户身份，并向下游传递用户、角色、权限和 request id。 |
 | Session cache | 登录或注册成功后缓存 auth 返回的会话身份信息，后续请求优先从 Redis 获取会话上下文。 |
 | Response contract | 对前端保持统一成功响应、分页响应和错误响应结构。 |
 | Request correlation | 生成或透传 `X-Request-Id`，并要求下游服务保留该 request id。 |
-| Cross-service aggregation | 仅为明确页面场景提供少量聚合读接口，例如管理后台概览。 |
-| Streaming entrypoint | 为问答和报告生成暴露 SSE/流式入口，业务生成逻辑仍归领域服务。 |
+| Cross-service aggregation | 仅在前后端契约明确后提供聚合读接口；本轮管理后台概览暂标缺失。 |
+| Streaming entrypoint | 问答和报告生成的 SSE/流式入口暂未确定，本轮只记录缺失状态。 |
 | Edge policy | 集中处理 CORS、基础请求头、请求大小原则、健康检查和公开 API 命名。 |
 
 ## Gateway 不应负责
@@ -51,18 +51,27 @@
 /readyz
 ```
 
-推荐路径分组：
+当前已确定路径分组：
 
 | Gateway path | 初始 owner | 说明 |
 | --- | --- | --- |
+| `/healthz` | `gateway` | 进程存活检查。 |
+| `/readyz` | `gateway` | 就绪检查。 |
 | `/api/v1/auth/**` | `auth` | 注册、登录、登出、当前用户。 |
-| `/api/v1/users/me` | `auth` | 当前用户资料，可作为 `/auth/me` 的别名或后续稳定入口。 |
-| `/api/v1/knowledge-bases/**` | `knowledge` | 知识库 CRUD、策略配置、知识库内文档列表。 |
-| `/api/v1/documents/**` | `file` / `knowledge` | 文件上传和原文件归 `file`，切片与索引状态归 `knowledge`。 |
-| `/api/v1/search` | `knowledge` | 面向用户的知识检索。 |
-| `/api/v1/chat/**` | `qa` | 会话、消息、流式问答。 |
-| `/api/v1/reports/**` | `document` | 报告记录、大纲、章节生成、导出和下载。 |
-| `/api/v1/admin/overview` | Aggregated | 管理后台概览，可由 gateway 聚合多个服务的只读指标。 |
+| `/api/v1/knowledge-bases/{knowledgeBaseId}/documents` | `file` | 文件上传入口。知识库存在性校验和 ingestion handoff 契约暂未确定。 |
+| `/api/v1/documents/{documentId}` | `file` | 更新 file-owned 文档元数据、删除原始文件记录。 |
+| `/api/v1/documents/{documentId}/download` | `file` | 下载原始文件。 |
+
+暂缺的下游接口：
+
+| Placeholder | 预期 owner | 状态 |
+| --- | --- | --- |
+| `GET/POST /api/v1/knowledge-bases` 和 `GET/PATCH/DELETE /api/v1/knowledge-bases/{knowledgeBaseId}` | `knowledge` | 缺失：知识库 CRUD 契约未定。 |
+| `GET /api/v1/knowledge-bases/{knowledgeBaseId}/documents`、`GET /api/v1/documents/{documentId}`、`GET /api/v1/documents/{documentId}/chunks` | `knowledge` | 缺失：知识库内文档列表、文档详情和 chunks 契约未定。 |
+| `/api/v1/search` | `knowledge` | 缺失：检索请求、过滤、排序、返回引用格式未定。 |
+| `/api/v1/chat/**` | `qa` | 缺失：会话、消息、非流式/流式回答、引用事件格式未定。 |
+| `/api/v1/reports/**` | `document` | 缺失：报告记录、大纲、章节生成、导出和下载契约未定。 |
+| `/api/v1/admin/**` | `gateway` + domain services | 缺失：聚合指标来源和展示字段未定。 |
 
 当某个 endpoint 涉及两个服务时，文档必须显式标注 workflow owner。默认规则是：拥有核心业务状态的服务拥有流程，gateway 只做入口和上下文传递。
 
@@ -211,24 +220,16 @@ Gateway 必须只把 `data.session.accessToken` 返回给前端，不得把 Redi
 | `dependency_error` | `502` |
 | `internal_error` | `500` |
 
-## SSE 与流式接口
+## 缺失下游接口
 
-问答和报告生成需要流式输出。初期约定：
+知识库、问答、报告生成和管理后台聚合的前后端接口尚未完全确定。当前 OpenAPI 只在顶层 `x-missing-contracts` 标记缺失范围，不把这些 endpoint 作为可依赖的公开契约。
 
-- Gateway 暴露 `text/event-stream` endpoint。
-- 业务生成逻辑由 `qa` 或 `document` 服务负责。
-- Gateway 负责传递认证上下文和 request id。
-- 流式事件结构先在 OpenAPI 中标记，完整断线重连策略后续补充。
+后续补齐任一缺失接口时，需要同步更新：
 
-推荐事件类型：
-
-| Event | 用途 |
-| --- | --- |
-| `progress` | 进度或阶段变化。 |
-| `message` | 文本增量。 |
-| `citation` | 问答引用来源增量。 |
-| `done` | 流式任务完成。 |
-| `error` | 流式任务失败。 |
+- `docs/api/gateway.openapi.yaml`
+- `docs/frontend-backend-contract.md`
+- `docs/service-boundaries.md`
+- 对应服务接口文档
 
 ## 健康检查
 
