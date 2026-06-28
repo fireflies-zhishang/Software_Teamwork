@@ -161,3 +161,75 @@ gateway -> normalized SearchResponse or ErrorResponse
 - `docs/api/gateway.openapi.yaml`
 - `docs/service-boundaries.md`
 - `docs/frontend-backend-contract.md`
+
+## Scenario: Domain Service Interface Documents
+
+### 1. Scope / Trigger
+
+- Trigger: adding or changing a service-level interface document such as
+  `docs/auth.md` or `docs/file.md`.
+- Applies when gateway-facing routes depend on an internal domain service
+  contract, even if the service code has not been implemented yet.
+
+### 2. Signatures
+
+Service interface documents must list every related gateway route with:
+
+- HTTP method
+- gateway path
+- authentication requirement
+- owner service
+- short behavior summary
+
+If an internal service route is proposed, mark it as an internal draft and keep
+it separate from the public gateway contract.
+
+### 3. Contracts
+
+Document request and response fields using the same public IDs, timestamps,
+envelopes, and error shapes defined in `docs/api/gateway.openapi.yaml`.
+Binary success responses, such as file downloads, may omit the JSON envelope,
+but error responses must still use the standard error shape.
+
+### 4. Validation & Error Matrix
+
+For each documented endpoint, separate:
+
+- status codes already declared in OpenAPI,
+- future status codes that require an OpenAPI update before frontend reliance.
+
+### 5. Good/Base/Bad Cases
+
+- Good: `docs/file.md` documents file-owned routes, notes knowledge-owned
+  related routes, and calls out that object keys must not reach the frontend.
+- Base: a service document summarizes the gateway OpenAPI without adding
+  implementation-only behavior.
+- Bad: a service document declares a new frontend-facing status code or field
+  as stable without updating `docs/api/gateway.openapi.yaml`.
+
+### 6. Tests Required
+
+For documentation-only changes:
+
+- Parse `docs/api/gateway.openapi.yaml`.
+- Verify documented public paths exist in the OpenAPI file.
+- Check Markdown links resolve.
+
+When implementation exists, add handler or client tests for the documented
+status codes, envelopes, request id propagation, and context headers.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+docs/file.md declares GET /api/v1/files/{id}/download as stable
+gateway.openapi.yaml has no matching public path
+```
+
+#### Correct
+
+```text
+docs/file.md references /api/v1/documents/{documentId}/download
+gateway.openapi.yaml owns the same public path and owner-service marker
+```
