@@ -9,6 +9,7 @@
     "build:web": "bun run --cwd apps/web build",
     "lint:web": "bun run --cwd apps/web lint",
     "typecheck:web": "bun run --cwd apps/web typecheck",
-    "check:web": "bun run --cwd apps/web check"
+    "check:web": "bun run --cwd apps/web check",
+    "check:gateway-contract": "python scripts/verify_gateway_active_api.py"
   }
 }

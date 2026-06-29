@@ -134,6 +134,103 @@ Use path filters so unrelated documentation or service changes do not run every
 job. A workflow may still run a cheap detection job to decide which service jobs
 are needed.
 
+## Scenario: Gateway Active API Contract Workflow
+
+### 1. Scope / Trigger
+
+- Trigger: changing the public gateway OpenAPI, gateway active owner map,
+  frontend OpenAPI generation command, or the gateway contract verifier.
+- Applies to `docs/services/gateway/api/openapi.yaml`,
+  `docs/services/gateway/docs/active-api-owner-map.md`, `apps/web/package.json`,
+  `package.json`, `scripts/verify_gateway_active_api.py`, `scripts/tests/**`,
+  and `.github/workflows/gateway-contract.yml`.
+
+### 2. Signatures
+
+Local commands:
+
+```bash
+python scripts/verify_gateway_active_api.py
+bun run check:gateway-contract
+python -m unittest scripts.tests.test_verify_gateway_active_api
+```
+
+Workflow file:
+
+```text
+.github/workflows/gateway-contract.yml
+```
+
+### 3. Contracts
+
+The verifier is the CI gate for these executable contracts:
+
+- Active `/api/v1/**` operations must include `operationId`, non-empty `tags`,
+  `x-owner-service`, effective `security`, at least one `2XX` response, and at
+  least one `4XX` response.
+- `/healthz` and `/readyz` are operational exceptions owned by `gateway` and may
+  use `security: []`.
+- Stable active public paths must not use action-style segments such as
+  `login`, `logout`, `register`, `download`, `search`, `generate`, `export`,
+  `retry`, or `revoke`.
+- `x-missing-contracts.placeholderOperations` must not overlap active OpenAPI
+  paths.
+- `apps/web` API type generation must use
+  `../../docs/services/gateway/api/openapi.yaml`.
+- `docs/services/gateway/docs/active-api-owner-map.md` must match the active
+  operations, owner summary, and missing contract placeholders derived from
+  OpenAPI.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required handling |
+| --- | --- |
+| OpenAPI metadata is missing on an active `/api/v1/**` operation | Verifier exits non-zero and names the method/path and missing field. |
+| Owner map table or summary drifts from OpenAPI | Verifier exits non-zero and reports owner-map drift. |
+| Missing-contract placeholder overlaps an active operation | Verifier exits non-zero and names the overlapping placeholder. |
+| Frontend generation source changes away from gateway OpenAPI | Verifier exits non-zero and prints the expected source path. |
+| PyYAML is unavailable in CI | Workflow installs `pyyaml` before running verifier commands. |
+
+### 5. Good/Base/Bad Cases
+
+- Good: update OpenAPI and owner map together, then run
+  `bun run check:gateway-contract`.
+- Base: update only verifier tests or workflow wiring; CI still runs the
+  verifier unit tests and real-contract check.
+- Bad: add `GET /api/v1/search` or an active operation without a `4XX` response
+  and rely on manual review to catch it.
+
+### 6. Tests Required
+
+- Unit tests must cover missing required metadata, missing `4XX`, action-style
+  path segments, missing-contract overlap, frontend generation source drift,
+  and owner-map drift.
+- Local verification before PR must run:
+
+```bash
+python -m unittest scripts.tests.test_verify_gateway_active_api
+python scripts/verify_gateway_active_api.py
+```
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+Change docs/services/gateway/api/openapi.yaml
+Skip docs/services/gateway/docs/active-api-owner-map.md
+Open PR without running the verifier
+```
+
+#### Correct
+
+```text
+Change docs/services/gateway/api/openapi.yaml
+Update docs/services/gateway/docs/active-api-owner-map.md
+Run bun run check:gateway-contract
+Let .github/workflows/gateway-contract.yml enforce the same gate in PR
+```
+
 ---
 
 ## Frontend CI

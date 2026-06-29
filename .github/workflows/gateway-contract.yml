@@ -1,0 +1,45 @@
+name: Gateway Contract
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - "docs/services/gateway/api/openapi.yaml"
+      - "docs/services/gateway/docs/active-api-owner-map.md"
+      - "apps/web/package.json"
+      - "package.json"
+      - "scripts/**"
+      - ".github/workflows/gateway-contract.yml"
+  push:
+    branches: [develop]
+    paths:
+      - "docs/services/gateway/api/openapi.yaml"
+      - "docs/services/gateway/docs/active-api-owner-map.md"
+      - "apps/web/package.json"
+      - "package.json"
+      - "scripts/**"
+      - ".github/workflows/gateway-contract.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install verifier dependencies
+        run: python -m pip install pyyaml
+
+      - name: Run verifier unit tests
+        run: python -m unittest scripts.tests.test_verify_gateway_active_api
+
+      - name: Verify gateway active API contract
+        run: python scripts/verify_gateway_active_api.py

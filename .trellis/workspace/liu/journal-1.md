@@ -72,3 +72,36 @@ Implemented the document service baseline for issue 97, including Go service sca
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: Gateway active API contract verifier
+
+**Date**: 2026-06-29
+**Task**: Gateway active API contract verifier
+**Branch**: `Special/chore/gateway-active-api-check`
+
+### Summary
+
+Added a gateway active API verifier, CI gate, unit tests, local check script, and CI spec notes for issue #149.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `03c1192` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
