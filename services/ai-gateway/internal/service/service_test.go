@@ -241,6 +241,76 @@ func TestCreateEmbeddingsUsesDefaultProfileAndRecordsSafeSummary(t *testing.T) {
 	}
 }
 
+func TestCreateEmbeddingsRejectsInvalidProviderIndexes(t *testing.T) {
+	cases := []struct {
+		name string
+		data []EmbeddingVector
+	}{
+		{
+			name: "missing item",
+			data: []EmbeddingVector{embeddingVectorForTest(0)},
+		},
+		{
+			name: "duplicate index",
+			data: []EmbeddingVector{embeddingVectorForTest(0), embeddingVectorForTest(0)},
+		},
+		{
+			name: "out of range index",
+			data: []EmbeddingVector{embeddingVectorForTest(0), embeddingVectorForTest(2)},
+		},
+		{
+			name: "wrong response order",
+			data: []EmbeddingVector{embeddingVectorForTest(1), embeddingVectorForTest(0)},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := newMemoryRepository()
+			invoker := &fakeInvoker{
+				embeddingFn: func(context.Context, ProviderEmbeddingRequest) (EmbeddingResponse, ProviderCallMetadata, error) {
+					return EmbeddingResponse{
+						Object: "list",
+						Data:   tc.data,
+						Model:  "BAAI/bge-m3",
+					}, ProviderCallMetadata{StatusCode: 200}, nil
+				},
+			}
+			svc := New(repo, mustEncryptor(t), 60000, invoker)
+			dimensions := 1024
+			isDefault := true
+			if _, err := svc.CreateModelProfile(context.Background(), RequestContext{}, CreateModelProfileInput{
+				Name:       "default-embedding",
+				Purpose:    PurposeEmbedding,
+				Provider:   ProviderSiliconFlow,
+				BaseURL:    "https://api.siliconflow.cn/v1",
+				Model:      "BAAI/bge-m3",
+				APIKey:     "sk-secret-value",
+				IsDefault:  &isDefault,
+				Dimensions: &dimensions,
+			}); err != nil {
+				t.Fatalf("CreateModelProfile() error = %v", err)
+			}
+
+			_, err := svc.CreateEmbeddings(context.Background(), RequestContext{RequestID: "req-invalid", CallerService: "knowledge"}, EmbeddingInput{
+				Model: "BAAI/bge-m3",
+				Input: []string{"first chunk", "second chunk"},
+			})
+			appErr, ok := Classify(err)
+			if !ok || appErr.Code != CodeDependency {
+				t.Fatalf("CreateEmbeddings() error = %#v, want dependency_error", err)
+			}
+			if len(repo.invocations) != 1 {
+				t.Fatalf("invocations = %d, want 1", len(repo.invocations))
+			}
+			invocation := repo.invocations[0]
+			if invocation.Status != InvocationFailed || invocation.NormalizedErrorCode == nil || *invocation.NormalizedErrorCode != CodeDependency {
+				t.Fatalf("invocation = %#v, want failed dependency_error summary", invocation)
+			}
+		})
+	}
+}
+
 func TestCreateEmbeddingsRejectsWrongPurposeProfile(t *testing.T) {
 	svc := New(newMemoryRepository(), mustEncryptor(t), 60000, &fakeInvoker{})
 	profile, err := svc.CreateModelProfile(context.Background(), RequestContext{}, CreateModelProfileInput{
@@ -326,6 +396,79 @@ func TestCreateRerankingUsesDefaultTopNAndRecordsSafeSummary(t *testing.T) {
 	}
 }
 
+func TestCreateRerankingRejectsInvalidProviderDocumentMapping(t *testing.T) {
+	cases := []struct {
+		name string
+		data []RerankingResult
+	}{
+		{
+			name: "out of range index",
+			data: []RerankingResult{{Index: 2, DocumentID: "chunk-2", Score: 0.91}},
+		},
+		{
+			name: "duplicate index",
+			data: []RerankingResult{
+				{Index: 0, DocumentID: "chunk-1", Score: 0.91},
+				{Index: 0, DocumentID: "chunk-1", Score: 0.82},
+			},
+		},
+		{
+			name: "mismatched document id",
+			data: []RerankingResult{{Index: 1, DocumentID: "chunk-1", Score: 0.91}},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := newMemoryRepository()
+			invoker := &fakeInvoker{
+				rerankingFn: func(context.Context, ProviderRerankingRequest) (RerankingResponse, ProviderCallMetadata, error) {
+					return RerankingResponse{
+						Object: "list",
+						Data:   tc.data,
+						Model:  "BAAI/bge-reranker-v2-m3",
+					}, ProviderCallMetadata{StatusCode: 200}, nil
+				},
+			}
+			svc := New(repo, mustEncryptor(t), 60000, invoker)
+			topN := 2
+			isDefault := true
+			if _, err := svc.CreateModelProfile(context.Background(), RequestContext{}, CreateModelProfileInput{
+				Name:      "default-rerank",
+				Purpose:   PurposeRerank,
+				Provider:  ProviderSiliconFlow,
+				BaseURL:   "https://api.siliconflow.cn/v1",
+				Model:     "BAAI/bge-reranker-v2-m3",
+				APIKey:    "sk-secret-value",
+				IsDefault: &isDefault,
+				TopN:      &topN,
+			}); err != nil {
+				t.Fatalf("CreateModelProfile() error = %v", err)
+			}
+
+			_, err := svc.CreateReranking(context.Background(), RequestContext{RequestID: "req-rerank-invalid", CallerService: "knowledge"}, RerankingInput{
+				Model: "BAAI/bge-reranker-v2-m3",
+				Query: "query",
+				Documents: []RerankingDocument{
+					{ID: "chunk-1", Text: "first document"},
+					{ID: "chunk-2", Text: "second document"},
+				},
+			})
+			appErr, ok := Classify(err)
+			if !ok || appErr.Code != CodeDependency {
+				t.Fatalf("CreateReranking() error = %#v, want dependency_error", err)
+			}
+			if len(repo.invocations) != 1 {
+				t.Fatalf("invocations = %d, want 1", len(repo.invocations))
+			}
+			invocation := repo.invocations[0]
+			if invocation.Status != InvocationFailed || invocation.NormalizedErrorCode == nil || *invocation.NormalizedErrorCode != CodeDependency {
+				t.Fatalf("invocation = %#v, want failed dependency_error summary", invocation)
+			}
+		})
+	}
+}
+
 func TestCreateEmbeddingsNormalizesProviderRateLimit(t *testing.T) {
 	repo := newMemoryRepository()
 	statusCode := 429
@@ -366,6 +509,14 @@ func TestCreateEmbeddingsNormalizesProviderRateLimit(t *testing.T) {
 	}
 	if invocation.ProviderStatusCode == nil || *invocation.ProviderStatusCode != statusCode {
 		t.Fatalf("ProviderStatusCode = %#v, want %d", invocation.ProviderStatusCode, statusCode)
+	}
+}
+
+func embeddingVectorForTest(index int) EmbeddingVector {
+	return EmbeddingVector{
+		Object:    "embedding",
+		Index:     index,
+		Embedding: json.RawMessage(`[0.1,0.2]`),
 	}
 }
 

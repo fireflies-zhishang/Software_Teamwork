@@ -203,32 +203,44 @@ func normalizeRerankingResponse(req service.ProviderRerankingRequest, response r
 	}
 	if len(response.Data) > 0 {
 		out.Data = make([]service.RerankingResult, len(response.Data))
+		seen := make(map[int]struct{}, len(response.Data))
 		for i, item := range response.Data {
+			if item.Index < 0 || item.Index >= len(req.Documents) {
+				return service.RerankingResponse{}, invalidProviderResponse()
+			}
+			if _, ok := seen[item.Index]; ok {
+				return service.RerankingResponse{}, invalidProviderResponse()
+			}
 			if item.Score == nil {
-				return service.RerankingResponse{}, service.NewProviderError(service.CodeDependency, "provider returned an invalid response", nil, nil)
+				return service.RerankingResponse{}, invalidProviderResponse()
 			}
-			documentID := item.DocumentID
-			if documentID == "" && item.Index >= 0 && item.Index < len(req.Documents) {
-				documentID = req.Documents[item.Index].ID
+			if item.DocumentID != "" && item.DocumentID != req.Documents[item.Index].ID {
+				return service.RerankingResponse{}, invalidProviderResponse()
 			}
-			out.Data[i] = service.RerankingResult{Index: item.Index, DocumentID: documentID, Score: *item.Score}
+			out.Data[i] = service.RerankingResult{Index: item.Index, DocumentID: req.Documents[item.Index].ID, Score: *item.Score}
+			seen[item.Index] = struct{}{}
 		}
 		return out, nil
 	}
 	if len(response.Results) > 0 {
 		out.Data = make([]service.RerankingResult, len(response.Results))
+		seen := make(map[int]struct{}, len(response.Results))
 		for i, item := range response.Results {
 			if item.Index < 0 || item.Index >= len(req.Documents) {
-				return service.RerankingResponse{}, service.NewProviderError(service.CodeDependency, "provider returned an invalid response", nil, nil)
+				return service.RerankingResponse{}, invalidProviderResponse()
+			}
+			if _, ok := seen[item.Index]; ok {
+				return service.RerankingResponse{}, invalidProviderResponse()
 			}
 			score := item.RelevanceScore
 			if score == nil {
 				score = item.Score
 			}
 			if score == nil {
-				return service.RerankingResponse{}, service.NewProviderError(service.CodeDependency, "provider returned an invalid response", nil, nil)
+				return service.RerankingResponse{}, invalidProviderResponse()
 			}
 			out.Data[i] = service.RerankingResult{Index: item.Index, DocumentID: req.Documents[item.Index].ID, Score: *score}
+			seen[item.Index] = struct{}{}
 		}
 		if out.Usage == nil && response.Meta != nil && response.Meta.Tokens != nil {
 			inputTokens := response.Meta.Tokens.InputTokens
@@ -241,7 +253,11 @@ func normalizeRerankingResponse(req service.ProviderRerankingRequest, response r
 		}
 		return out, nil
 	}
-	return service.RerankingResponse{}, service.NewProviderError(service.CodeDependency, "provider returned an invalid response", nil, nil)
+	return service.RerankingResponse{}, invalidProviderResponse()
+}
+
+func invalidProviderResponse() error {
+	return service.NewProviderError(service.CodeDependency, "provider returned an invalid response", nil, nil)
 }
 
 func joinURL(baseURL, path string) (string, error) {

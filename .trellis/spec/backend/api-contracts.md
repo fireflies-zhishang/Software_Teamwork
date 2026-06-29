@@ -375,6 +375,8 @@ qa owns messages, MCP tool calls, citations, and public SSE event shape
 - Provider credentials are decrypted only inside the model invocation boundary and sent as provider bearer tokens. They must not appear in responses, ordinary logs, invocation summaries, usage aggregates, metrics labels, or test failure messages.
 - `provider_invocations` may store profile ID, provider, model, operation, status, provider status code, token usage, input count, dimensions/topN, duration, attempt count, normalized error code/type, caller service, external user ID, and timestamps.
 - `provider_invocations` must not store embedding input text, rerank query text, rerank document text, embedding vectors, full provider request/response bodies, raw provider URL query, API keys, bearer tokens, or credential fingerprints.
+- Embedding provider responses must contain exactly one `data[]` item per input item. Each item must be `object = "embedding"`, have valid JSON `embedding`, and have an `index` equal to its input position with no duplicates or out-of-range values.
+- Reranking provider responses must normalize every result back to the original request `documents[]` by index. Each result index must be in range, unique, and the returned `document_id` must match `documents[index].id` when the provider supplies one; otherwise the adapter must fill it from the request document.
 - Rerank provider requests should avoid asking providers to echo document text, for example by sending `return_documents=false` when the provider supports it.
 
 ### 4. Validation & Error Matrix
@@ -387,6 +389,8 @@ qa owns messages, MCP tool calls, citations, and public SSE event shape
 | `profile_id` references the wrong purpose, such as chat profile for embeddings | `400` OpenAI-style `invalid_request_error`, code `validation_error` |
 | Missing explicit profile or missing enabled default profile | `404` OpenAI-style `not_found_error`, code `not_found` |
 | Profile has no active credential or credential cannot be decrypted | `502` OpenAI-style `upstream_error`, code `dependency_error` |
+| Provider returns missing, duplicate, out-of-range, or wrong-order embedding indexes | `502` OpenAI-style `upstream_error`, code `dependency_error` |
+| Provider returns rerank indexes outside `documents[]`, duplicate rerank indexes, or mismatched `document_id` values | `502` OpenAI-style `upstream_error`, code `dependency_error` |
 | Provider returns request validation failure | `400` OpenAI-style `invalid_request_error`, code `validation_error` |
 | Provider rate limits | `429` OpenAI-style `rate_limit_error`, code `rate_limited` |
 | Provider auth, permission, network, timeout, malformed JSON, or 5xx failure | `502` OpenAI-style `upstream_error`, code `dependency_error` |
@@ -400,8 +404,8 @@ qa owns messages, MCP tool calls, citations, and public SSE event shape
 ### 6. Tests Required
 
 - Handler tests for auth failure, validation error shape, successful embedding response shape, successful reranking response shape, and no API key/request text leakage.
-- Service tests for default profile resolution, explicit wrong-purpose profile rejection, dimensions/topN resolution, provider error normalization, invocation status/error fields, and secret-safe summaries.
-- Provider client tests with fake HTTP servers for request path, bearer token placement, batch input, dimensions, rerank `top_n`, `return_documents=false`, provider error mapping, and malformed provider response handling.
+- Service tests for default profile resolution, explicit wrong-purpose profile rejection, dimensions/topN resolution, provider error normalization, embedding count/index validation, rerank index/document mapping validation, invocation status/error fields, and secret-safe summaries.
+- Provider client tests with fake HTTP servers for request path, bearer token placement, batch input, dimensions, rerank `top_n`, `return_documents=false`, rerank `data[]` index/document mapping, provider error mapping, and malformed provider response handling.
 - Repository/migration validation should be added when a local PostgreSQL test harness is available; until then, migrations must be reviewed for explicit columns, no raw payload columns, safe indexes, and goose `-- +goose Up`.
 - Required checks from `services/ai-gateway`: `go test ./...`, `go build ./cmd/server`, and `git diff --check`.
 

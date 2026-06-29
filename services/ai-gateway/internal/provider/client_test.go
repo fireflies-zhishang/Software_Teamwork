@@ -114,6 +114,79 @@ func TestCreateRerankingSendsTextOnlyAndDisablesDocumentReturn(t *testing.T) {
 	}
 }
 
+func TestCreateRerankingDataBranchMapsDocumentIDByIndex(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"index":1,"score":0.88}],"model":"BAAI/bge-reranker-v2-m3"}`))
+	}))
+	defer server.Close()
+
+	client := NewHTTPClient(server.Client())
+	response, _, err := client.CreateReranking(t.Context(), service.ProviderRerankingRequest{
+		BaseURL:   server.URL,
+		APIKey:    "sk-secret-value",
+		TimeoutMS: 1000,
+		Model:     "BAAI/bge-reranker-v2-m3",
+		Query:     "query",
+		Documents: []service.RerankingDocument{
+			{ID: "chunk-1", Text: "first text"},
+			{ID: "chunk-2", Text: "second text"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateReranking() error = %v", err)
+	}
+	if len(response.Data) != 1 || response.Data[0].Index != 1 || response.Data[0].DocumentID != "chunk-2" || response.Data[0].Score != 0.88 {
+		t.Fatalf("response data = %#v", response.Data)
+	}
+}
+
+func TestCreateRerankingRejectsInvalidDataBranchIndexes(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "out of range index",
+			body: `{"data":[{"index":2,"document_id":"chunk-2","score":0.91}],"model":"BAAI/bge-reranker-v2-m3"}`,
+		},
+		{
+			name: "mismatched document id",
+			body: `{"data":[{"index":1,"document_id":"chunk-1","score":0.91}],"model":"BAAI/bge-reranker-v2-m3"}`,
+		},
+		{
+			name: "duplicate index",
+			body: `{"data":[{"index":0,"score":0.91},{"index":0,"score":0.82}],"model":"BAAI/bge-reranker-v2-m3"}`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer server.Close()
+
+			client := NewHTTPClient(server.Client())
+			_, _, err := client.CreateReranking(t.Context(), service.ProviderRerankingRequest{
+				BaseURL:   server.URL,
+				APIKey:    "sk-secret-value",
+				TimeoutMS: 1000,
+				Model:     "BAAI/bge-reranker-v2-m3",
+				Query:     "query",
+				Documents: []service.RerankingDocument{
+					{ID: "chunk-1", Text: "first text"},
+					{ID: "chunk-2", Text: "second text"},
+				},
+			})
+			if err == nil {
+				t.Fatalf("CreateReranking() error = nil, want invalid provider response")
+			}
+		})
+	}
+}
+
 func TestProviderErrorDoesNotExposeRawBody(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `raw provider body with sk-secret-value and prompt text`, http.StatusInternalServerError)
