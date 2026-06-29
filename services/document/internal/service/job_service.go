@@ -10,6 +10,7 @@ import (
 type JobRepository interface {
 	FindReportJobByID(ctx context.Context, id string) (ReportJob, error)
 	ListReportJobsByReportID(ctx context.Context, reportID string) ([]ReportJob, error)
+	CreateReportJob(ctx context.Context, value ReportJob) (ReportJob, error)
 	UpdateReportJobStatus(ctx context.Context, id string, status JobStatus, errorCode, errorMessage string, startedAt, finishedAt *time.Time) (ReportJob, error)
 	IncrementJobRetryCount(ctx context.Context, id string) (ReportJob, error)
 	CreateReportJobAttempt(ctx context.Context, value ReportJobAttempt) (ReportJobAttempt, error)
@@ -17,12 +18,18 @@ type JobRepository interface {
 	ListReportEventsByReportID(ctx context.Context, reportID string) ([]ReportEvent, error)
 }
 
-type JobService struct {
-	repo JobRepository
+// TaskEnqueuer submits async tasks to the queue.
+type TaskEnqueuer interface {
+	EnqueueOutlineGeneration(ctx context.Context, jobID, requestID, userID string) (string, error)
 }
 
-func NewJobService(repo JobRepository) *JobService {
-	return &JobService{repo: repo}
+type JobService struct {
+	repo     JobRepository
+	enqueuer TaskEnqueuer
+}
+
+func NewJobService(repo JobRepository, enqueuer TaskEnqueuer) *JobService {
+	return &JobService{repo: repo, enqueuer: enqueuer}
 }
 
 func (s *JobService) GetJob(ctx context.Context, id string) (ReportJob, error) {
@@ -33,21 +40,51 @@ func (s *JobService) ListJobs(ctx context.Context, reportID string) ([]ReportJob
 	return s.repo.ListReportJobsByReportID(ctx, reportID)
 }
 
-func (s *JobService) CancelJob(ctx context.Context, id string) (ReportJob, error) {
-	job, err := s.repo.FindReportJobByID(ctx, id)
+type CreateJobInput struct {
+	RequestID string
+	UserID    string
+	ReportID  string
+	JobType   JobType
+}
+
+func (s *JobService) CreateJob(ctx context.Context, input CreateJobInput) (ReportJob, error) {
+	now := time.Now().UTC()
+	job := ReportJob{
+		ID:          newID(),
+		RequestID:   input.RequestID,
+		Source:      "api",
+		JobType:     input.JobType,
+		TargetType:  "report",
+		TargetID:    input.ReportID,
+		QueueName:   "document",
+		ReportID:    input.ReportID,
+		Status:      JobStatusPending,
+		MaxAttempts: 3,
+		CreatedAt:   now,
+	}
+	created, err := s.repo.CreateReportJob(ctx, job)
 	if err != nil {
-		return ReportJob{}, err
+		return ReportJob{}, fmt.Errorf("create report job: %w", err)
 	}
-	if job.Status != JobStatusPending && job.Status != JobStatusRunning {
-		return ReportJob{}, NewError(CodeValidation, "job cannot be canceled in current status", nil)
+	taskID, err := s.enqueuer.EnqueueOutlineGeneration(ctx, created.ID, input.RequestID, input.UserID)
+	if err != nil {
+		return ReportJob{}, fmt.Errorf("enqueue job task: %w", err)
 	}
-	return s.repo.UpdateReportJobStatus(ctx, id, JobStatusCanceled, "", "", nil, nil)
+	updated, err := s.repo.UpdateReportJobStatus(ctx, created.ID, JobStatusPending, "", "", nil, nil)
+	if err != nil {
+		return created, nil
+	}
+	updated.AsynqTaskID = taskID
+	return updated, nil
 }
 
 func (s *JobService) RetryJob(ctx context.Context, id string) (ReportJobAttempt, error) {
 	job, err := s.repo.FindReportJobByID(ctx, id)
 	if err != nil {
 		return ReportJobAttempt{}, err
+	}
+	if job.Status != JobStatusFailed && job.Status != JobStatusCanceled {
+		return ReportJobAttempt{}, NewError(CodeValidation, "only failed or canceled jobs can be retried", nil)
 	}
 	if job.RetryCount >= job.MaxAttempts {
 		return ReportJobAttempt{}, NewError(CodeValidation, "max retry attempts reached", nil)
@@ -64,6 +101,11 @@ func (s *JobService) RetryJob(ctx context.Context, id string) (ReportJobAttempt,
 	if err != nil {
 		return ReportJobAttempt{}, fmt.Errorf("create retry attempt: %w", err)
 	}
+	taskID, err := s.enqueuer.EnqueueOutlineGeneration(ctx, job.ID, job.RequestID, "")
+	if err != nil {
+		return ReportJobAttempt{}, fmt.Errorf("enqueue retry task: %w", err)
+	}
+	_ = taskID
 	if _, err = s.repo.IncrementJobRetryCount(ctx, id); err != nil {
 		return ReportJobAttempt{}, fmt.Errorf("increment retry count: %w", err)
 	}
