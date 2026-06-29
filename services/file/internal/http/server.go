@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"mime"
+	"mime/multipart"
 	"net/http"
 	"strconv"
 	"strings"
@@ -50,6 +51,10 @@ func NewServer(documents *service.Service, cfg Config) *Server {
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /healthz", s.handleHealth)
 	s.mux.HandleFunc("GET /readyz", s.handleReady)
+	s.mux.HandleFunc("POST /internal/v1/files", s.handleCreateFile)
+	s.mux.HandleFunc("GET /internal/v1/files/{fileId}", s.handleGetFile)
+	s.mux.HandleFunc("DELETE /internal/v1/files/{fileId}", s.handleDeleteFile)
+	s.mux.HandleFunc("GET /internal/v1/files/{fileId}/content", s.handleGetFileContent)
 	s.mux.HandleFunc("POST /internal/v1/knowledge-bases/{knowledgeBaseId}/documents", s.handleUploadDocument)
 	s.mux.HandleFunc("GET /internal/v1/documents/{documentId}", s.handleGetDocument)
 	s.mux.HandleFunc("PATCH /internal/v1/documents/{documentId}", s.handleUpdateDocument)
@@ -95,21 +100,79 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"service": "file", "status": "ready"}, requestIDFromContext(r.Context()))
 }
 
+func (s *Server) handleCreateFile(w http.ResponseWriter, r *http.Request) {
+	reqCtx, ok := s.internalContext(w, r)
+	if !ok {
+		return
+	}
+
+	file, header, checksum, ok := s.parseMultipartFile(w, r)
+	if !ok {
+		return
+	}
+	defer file.Close()
+
+	created, err := s.documents.CreateFile(r.Context(), reqCtx, service.CreateFileInput{
+		FileName:       header.Filename,
+		ContentType:    header.Header.Get("Content-Type"),
+		SizeBytes:      header.Size,
+		ChecksumSHA256: checksum,
+		Content:        file,
+	})
+	if err != nil {
+		writeAppError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, fileObjectFromDomain(created), requestIDFromContext(r.Context()))
+}
+
+func (s *Server) handleGetFile(w http.ResponseWriter, r *http.Request) {
+	reqCtx, ok := s.internalContext(w, r)
+	if !ok {
+		return
+	}
+	file, err := s.documents.GetFile(r.Context(), reqCtx, r.PathValue("fileId"))
+	if err != nil {
+		writeAppError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, fileObjectFromDomain(file), requestIDFromContext(r.Context()))
+}
+
+func (s *Server) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
+	reqCtx, ok := s.internalContext(w, r)
+	if !ok {
+		return
+	}
+	if err := s.documents.DeleteFile(r.Context(), reqCtx, r.PathValue("fileId")); err != nil {
+		writeAppError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleGetFileContent(w http.ResponseWriter, r *http.Request) {
+	reqCtx, ok := s.internalContext(w, r)
+	if !ok {
+		return
+	}
+	content, err := s.documents.GetFileContent(r.Context(), reqCtx, r.PathValue("fileId"))
+	if err != nil {
+		writeAppError(w, r, err)
+		return
+	}
+	defer content.Body.Close()
+	writeContent(w, content.ContentType, content.File.Filename, content.SizeBytes, content.Body)
+}
+
 func (s *Server) handleUploadDocument(w http.ResponseWriter, r *http.Request) {
 	reqCtx, ok := s.gatewayContext(w, r)
 	if !ok {
 		return
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, s.maxUploadBytes)
-	if err := r.ParseMultipartForm(s.maxUploadBytes); err != nil {
-		writeAppError(w, r, service.ValidationError("request validation failed", map[string]string{"file": "multipart form is invalid"}))
-		return
-	}
-
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		writeAppError(w, r, service.ValidationError("request validation failed", map[string]string{"file": "is required"}))
+	file, header, _, ok := s.parseMultipartFile(w, r)
+	if !ok {
 		return
 	}
 	defer file.Close()
@@ -203,18 +266,31 @@ func (s *Server) handleGetDocumentContent(w http.ResponseWriter, r *http.Request
 		return
 	}
 	defer content.Body.Close()
+	writeContent(w, content.ContentType, content.Document.Name, content.SizeBytes, content.Body)
+}
 
-	contentType := content.ContentType
-	if contentType == "" {
-		contentType = "application/octet-stream"
+func (s *Server) parseMultipartFile(w http.ResponseWriter, r *http.Request) (multipart.File, *multipart.FileHeader, string, bool) {
+	r.Body = http.MaxBytesReader(w, r.Body, s.maxUploadBytes)
+	if err := r.ParseMultipartForm(s.maxUploadBytes); err != nil {
+		fieldMessage := "multipart form is invalid"
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			fieldMessage = "exceeds maximum upload size"
+		}
+		writeAppError(w, r, service.ValidationError("request validation failed", map[string]string{"file": fieldMessage}))
+		return nil, nil, "", false
 	}
-	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": safeFilename(content.Document.Name)}))
-	if content.SizeBytes >= 0 {
-		w.Header().Set("Content-Length", strconv.FormatInt(content.SizeBytes, 10))
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeAppError(w, r, service.ValidationError("request validation failed", map[string]string{"file": "is required"}))
+		return nil, nil, "", false
 	}
-	w.WriteHeader(http.StatusOK)
-	_, _ = io.Copy(w, content.Body)
+	checksum := ""
+	if r.MultipartForm != nil {
+		checksum = strings.TrimSpace(firstValue(r.MultipartForm.Value["checksumSha256"]))
+	}
+	return file, header, checksum, true
 }
 
 func (s *Server) handleNotFound(w http.ResponseWriter, r *http.Request) {
@@ -222,19 +298,34 @@ func (s *Server) handleNotFound(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) gatewayContext(w http.ResponseWriter, r *http.Request) (service.RequestContext, bool) {
-	reqCtx := service.RequestContext{
+	reqCtx := requestContextFromHeaders(r)
+	if strings.TrimSpace(reqCtx.UserID) == "" {
+		writeAppError(w, r, service.UnauthorizedError())
+		return service.RequestContext{}, false
+	}
+	return reqCtx, true
+}
+
+func (s *Server) internalContext(w http.ResponseWriter, r *http.Request) (service.RequestContext, bool) {
+	reqCtx := requestContextFromHeaders(r)
+	if strings.TrimSpace(reqCtx.CallerService) == "" && strings.TrimSpace(reqCtx.UserID) == "" {
+		writeAppError(w, r, service.UnauthorizedError())
+		return service.RequestContext{}, false
+	}
+	return reqCtx, true
+}
+
+func requestContextFromHeaders(r *http.Request) service.RequestContext {
+	return service.RequestContext{
 		RequestID:      requestIDFromContext(r.Context()),
 		UserID:         strings.TrimSpace(r.Header.Get("X-User-Id")),
+		CallerService:  strings.TrimSpace(r.Header.Get("X-Caller-Service")),
+		ServiceToken:   strings.TrimSpace(r.Header.Get("X-Service-Token")),
 		Roles:          splitCSV(r.Header.Get("X-User-Roles")),
 		Permissions:    splitCSV(r.Header.Get("X-User-Permissions")),
 		ForwardedFor:   strings.TrimSpace(r.Header.Get("X-Forwarded-For")),
 		ForwardedProto: strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")),
 	}
-	if reqCtx.UserID == "" {
-		writeAppError(w, r, service.UnauthorizedError())
-		return service.RequestContext{}, false
-	}
-	return reqCtx, true
 }
 
 func splitCSV(value string) []string {
@@ -249,6 +340,26 @@ func splitCSV(value string) []string {
 	return items
 }
 
+func writeContent(w http.ResponseWriter, contentType string, filename string, sizeBytes int64, body io.Reader) {
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": safeFilename(filename)}))
+	if sizeBytes >= 0 {
+		w.Header().Set("Content-Length", strconv.FormatInt(sizeBytes, 10))
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.Copy(w, body)
+}
+
+func firstValue(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
+}
+
 func safeFilename(name string) string {
 	name = strings.Map(func(r rune) rune {
 		if r == '\r' || r == '\n' || r == 0 {
@@ -257,7 +368,7 @@ func safeFilename(name string) string {
 		return r
 	}, strings.TrimSpace(name))
 	if name == "" {
-		return "document"
+		return "file"
 	}
 	return name
 }

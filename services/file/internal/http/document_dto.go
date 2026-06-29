@@ -18,6 +18,16 @@ type documentSummary struct {
 	SizeBytes       int64                  `json:"sizeBytes"`
 }
 
+type fileObjectResponse struct {
+	ID             string  `json:"id"`
+	Filename       string  `json:"filename"`
+	ContentType    string  `json:"contentType"`
+	SizeBytes      int64   `json:"sizeBytes"`
+	ChecksumSHA256 *string `json:"checksumSha256"`
+	CreatedAt      string  `json:"createdAt"`
+	DeletedAt      *string `json:"deletedAt"`
+}
+
 func documentSummaryFromDomain(doc service.Document) documentSummary {
 	return documentSummary{
 		ID:              doc.ID,
@@ -29,5 +39,27 @@ func documentSummaryFromDomain(doc service.Document) documentSummary {
 		CreatedAt:       doc.CreatedAt.UTC().Format(time.RFC3339),
 		ContentType:     doc.ContentType,
 		SizeBytes:       doc.SizeBytes,
+	}
+}
+
+func fileObjectFromDomain(file service.FileObject) fileObjectResponse {
+	var checksum *string
+	if file.ChecksumSHA256 != "" {
+		value := file.ChecksumSHA256
+		checksum = &value
+	}
+	var deletedAt *string
+	if file.DeletedAt != nil {
+		value := file.DeletedAt.UTC().Format(time.RFC3339)
+		deletedAt = &value
+	}
+	return fileObjectResponse{
+		ID:             file.ID,
+		Filename:       file.Filename,
+		ContentType:    file.ContentType,
+		SizeBytes:      file.SizeBytes,
+		ChecksumSHA256: checksum,
+		CreatedAt:      file.CreatedAt.UTC().Format(time.RFC3339),
+		DeletedAt:      deletedAt,
 	}
 }

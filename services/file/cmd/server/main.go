@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -26,8 +27,12 @@ func main() {
 	}
 
 	repo := repository.NewMemoryRepository()
-	objectStore := storage.NewMemoryStore()
-	documentService := service.New(repo, objectStore)
+	objectStore, err := newObjectStore(cfg)
+	if err != nil {
+		logger.Error("storage initialization failed", "service", "file", "error", err)
+		os.Exit(1)
+	}
+	documentService := service.New(repo, objectStore, service.WithStorageBackend(cfg.StorageBackend))
 	handler := filehttp.NewServer(documentService, filehttp.Config{
 		MaxUploadBytes: cfg.MaxUploadBytes,
 		Logger:         logger,
@@ -58,4 +63,15 @@ func main() {
 		os.Exit(1)
 	}
 	logger.Info("file service shutdown complete", "service", "file")
+}
+
+func newObjectStore(cfg config.Config) (service.ObjectStore, error) {
+	switch cfg.StorageBackend {
+	case "memory":
+		return storage.NewMemoryStore(), nil
+	case "local":
+		return storage.NewLocalStore(cfg.LocalStorageDir)
+	default:
+		return nil, fmt.Errorf("unsupported storage backend %q", cfg.StorageBackend)
+	}
 }

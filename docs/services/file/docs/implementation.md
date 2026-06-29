@@ -64,7 +64,8 @@ services/file/
 | `FILE_HTTP_ADDR` | `:8082` | HTTP listen address。 |
 | `FILE_SHUTDOWN_TIMEOUT` | `10s` | 优雅退出超时。 |
 | `FILE_MAX_UPLOAD_BYTES` | `33554432` | multipart 上传大小上限。 |
-| `FILE_STORAGE_BACKEND` | `memory` | 本地测试可用 `memory`；生产应使用 `minio`。 |
+| `FILE_STORAGE_BACKEND` | `memory` | 当前支持 `memory` 和符合 `ObjectStore` 接口的 `local` adapter；生产应使用 `minio` 或等价持久对象存储。 |
+| `FILE_LOCAL_STORAGE_DIR` | `.file-storage` | `FILE_STORAGE_BACKEND=local` 时的本地对象存储根目录。 |
 | `FILE_DATABASE_URL` | 无 | PostgreSQL DSN；启用 PostgreSQL repository 时必填。 |
 | `FILE_MINIO_ENDPOINT` | 无 | MinIO endpoint。 |
 | `FILE_MINIO_ACCESS_KEY` | 无 | MinIO access key，禁止日志输出。 |
@@ -119,6 +120,7 @@ PostgreSQL 访问使用 `pgx` + `sqlc`。不使用 ORM。
 - owner service 只保存 `file_ref` 和必要的展示快照，例如文件名、大小和 content type。
 - checksum 可由调用方传入，也可由 File Service 计算；如果两者都存在，必须校验一致。
 - memory object store 只用于单元测试和早期本地联调，不代表持久化能力。
+- local object store 可用于本地持久化 smoke test，仍不得把本地路径或 object key 返回给 handler 或 owner service client。
 
 ## 8. 删除与清理
 

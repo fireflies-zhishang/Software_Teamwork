@@ -11,6 +11,7 @@ const (
 	DefaultHTTPAddr        = ":8082"
 	DefaultMaxUploadBytes  = int64(32 << 20)
 	DefaultStorageBackend  = "memory"
+	DefaultLocalStorageDir = ".file-storage"
 	DefaultShutdownTimeout = 10 * time.Second
 )
 
@@ -18,6 +19,7 @@ type Config struct {
 	HTTPAddr        string
 	MaxUploadBytes  int64
 	StorageBackend  string
+	LocalStorageDir string
 	ShutdownTimeout time.Duration
 }
 
@@ -25,6 +27,7 @@ func Load() (Config, error) {
 	cfg := Config{
 		HTTPAddr:        stringValue("FILE_HTTP_ADDR", DefaultHTTPAddr),
 		StorageBackend:  stringValue("FILE_STORAGE_BACKEND", DefaultStorageBackend),
+		LocalStorageDir: stringValue("FILE_LOCAL_STORAGE_DIR", DefaultLocalStorageDir),
 		MaxUploadBytes:  DefaultMaxUploadBytes,
 		ShutdownTimeout: DefaultShutdownTimeout,
 	}
@@ -45,8 +48,14 @@ func Load() (Config, error) {
 		cfg.ShutdownTimeout = value
 	}
 
-	if cfg.StorageBackend != "memory" {
-		return Config{}, fmt.Errorf("FILE_STORAGE_BACKEND=%q is not implemented; supported value: memory", cfg.StorageBackend)
+	switch cfg.StorageBackend {
+	case "memory":
+	case "local":
+		if cfg.LocalStorageDir == "" {
+			return Config{}, fmt.Errorf("FILE_LOCAL_STORAGE_DIR must not be empty when FILE_STORAGE_BACKEND=local")
+		}
+	default:
+		return Config{}, fmt.Errorf("FILE_STORAGE_BACKEND=%q is not implemented; supported values: memory, local", cfg.StorageBackend)
 	}
 
 	return cfg, nil

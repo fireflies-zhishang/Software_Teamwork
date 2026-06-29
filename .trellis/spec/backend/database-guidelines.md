@@ -184,3 +184,71 @@ Rules:
 - Duplicating knowledge metadata between PostgreSQL and Qdrant without a source-of-truth rule.
 - Running external HTTP calls inside PostgreSQL transactions.
 - Letting `qa` bypass `knowledge` and directly own retrieval logic.
+
+## Scenario: File Service Base Object Storage
+
+### 1. Scope / Trigger
+
+- Trigger: adding or changing File Service base object upload, metadata persistence, object storage adapters, deletion cleanup, or `/internal/v1/files/**` routes.
+- Applies to `services/file/internal/service`, `services/file/internal/http`, `services/file/internal/repository`, `services/file/internal/platform/storage`, `services/file/migrations`, and `services/file/api/openapi.yaml`.
+
+### 2. Signatures
+
+- Internal API routes:
+  - `POST /internal/v1/files` with multipart field `file` and optional `checksumSha256`.
+  - `GET /internal/v1/files/{fileId}`.
+  - `DELETE /internal/v1/files/{fileId}`.
+  - `GET /internal/v1/files/{fileId}/content`.
+- Database files:
+  - `services/file/sqlc.yaml`.
+  - `services/file/internal/repository/queries/file_objects.sql`.
+  - `services/file/migrations/0001_create_file_objects.sql` or later forward-only migrations.
+- Storage adapters implement the service-owned `ObjectStore` port: `Put(ctx, key, body, contentType, sizeBytes)`, `Get(ctx, key)`, `Delete(ctx, key)`.
+
+### 3. Contracts
+
+- File metadata responses may expose only `id`, `filename`, `contentType`, `sizeBytes`, `checksumSha256`, `createdAt`, and `deletedAt`.
+- Responses and logs must not expose `storage_bucket`, `storage_object_key`, object-store URLs, local filesystem paths, access keys, or secret keys.
+- PostgreSQL is the durable source of metadata, deletion status, purge timestamps, and sanitized purge failure summaries.
+- Object keys are generated server-side from file IDs, never from user filenames.
+- `FILE_STORAGE_BACKEND=memory` is test/local-only; `local` is acceptable for local durable smoke tests; production should use MinIO or an equivalent persistent object store adapter.
+
+### 4. Validation & Error Matrix
+
+| Condition | Response/error |
+| --- | --- |
+| Missing multipart `file` | `400 validation_error` |
+| Empty file | `400 validation_error` |
+| Oversized/malformed multipart | `400 validation_error` |
+| Invalid or mismatched `checksumSha256` | `400 validation_error` |
+| Missing trusted caller context | `401 unauthorized` |
+| File missing, deleted, or purged | `404 not_found` |
+| Storage write/read/delete failure | `502 dependency_error` |
+| Metadata write/read/update failure | `502 dependency_error` |
+
+### 5. Good/Base/Bad Cases
+
+- Good: handler parses multipart and writes only envelope/content headers; service computes checksum, generates object key, coordinates repository plus object store; repository persists explicit file-object columns.
+- Base: a local storage adapter persists bytes under a configured directory for smoke tests while preserving the same `ObjectStore` interface.
+- Bad: handler imports MinIO or SQL packages, response DTO includes `objectKey` or `bucket`, or owner services use object keys for authorization.
+
+### 6. Tests Required
+
+- Handler tests for malformed multipart, missing file, empty file, oversized file, checksum mismatch, successful content stream headers, and reads after delete.
+- Service tests for checksum computation/validation, object key creation, delete state transitions, and storage dependency error mapping.
+- Storage adapter tests for put/get/delete, size mismatch, context cancellation where practical, and path traversal rejection for local storage.
+- Repository or migration validation once database test tooling is available.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+HTTP handler receives upload -> writes object directly to MinIO -> returns objectKey in JSON
+```
+
+#### Correct
+
+```text
+HTTP handler parses multipart -> service validates checksum and creates FileObject -> repository stores metadata -> ObjectStore stores bytes -> response returns safe FileObject fields only
+```

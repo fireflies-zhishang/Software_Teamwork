@@ -4,7 +4,7 @@
 
 Public frontend routes remain owned by gateway and are documented in `docs/services/gateway/api/openapi.yaml`. Frontend callers must not call this service directly. Stable file capability must be reached through gateway `/api/v1/**` resources owned by `knowledge` or `document`, while those owner services reuse this service's internal base file APIs.
 
-The implemented MVP route is still knowledge-document shaped for compatibility. The target internal contract is generic file-object shaped (`/internal/v1/files/**`), and the current knowledge-document routes should not be extended for report templates, report materials, generated report files, or new knowledge business metadata.
+The implemented internal contract is generic file-object shaped (`/internal/v1/files/**`). The knowledge-document routes remain available only for compatibility and should not be extended for report templates, report materials, generated report files, or new knowledge business metadata.
 
 ## Current Scope
 
@@ -12,24 +12,22 @@ Implemented now:
 
 - `GET /healthz`
 - `GET /readyz`
+- `POST /internal/v1/files`
+- `GET /internal/v1/files/{fileId}`
+- `DELETE /internal/v1/files/{fileId}`
+- `GET /internal/v1/files/{fileId}/content`
 - `POST /internal/v1/knowledge-bases/{knowledgeBaseId}/documents`
 - `GET /internal/v1/documents/{documentId}`
 - `PATCH /internal/v1/documents/{documentId}`
 - `DELETE /internal/v1/documents/{documentId}`
 - `GET /internal/v1/documents/{documentId}/content`
 
-Target internal contract:
-
-- `POST /internal/v1/files`
-- `GET /internal/v1/files/{fileId}`
-- `DELETE /internal/v1/files/{fileId}`
-- `GET /internal/v1/files/{fileId}/content`
 
 Out of scope for this MVP:
 
 - Local MinIO setup
 - Production MinIO adapter
-- PostgreSQL repository
+- Production PostgreSQL repository adapter; `sqlc.yaml`, first query file, and a `goose` migration are present as the contract scaffold
 - Knowledge ingestion handoff and knowledge document state
 - Report template, report material, and generated report file business state
 - Public knowledge-owned document list/detail/chunks/content contracts
@@ -61,12 +59,13 @@ context returns `401 unauthorized`; missing operation permission returns
 | --- | --- | --- |
 | `FILE_HTTP_ADDR` | `:8082` | HTTP listen address. |
 | `FILE_MAX_UPLOAD_BYTES` | `33554432` | Multipart upload limit in bytes. |
-| `FILE_STORAGE_BACKEND` | `memory` | Only `memory` is implemented in this MVP. |
+| `FILE_STORAGE_BACKEND` | `memory` | Supported values: `memory`, `local`. |
+| `FILE_LOCAL_STORAGE_DIR` | `.file-storage` | Local object-store root when `FILE_STORAGE_BACKEND=local`. |
 | `FILE_SHUTDOWN_TIMEOUT` | `10s` | Graceful shutdown timeout. |
 
 ## Storage Port
 
-Object storage is behind `service.ObjectStore`. The current `memory` adapter exists only for tests and early local integration. It is not a MinIO replacement and does not provide durability across process restarts.
+Object storage is behind `service.ObjectStore`. The current `memory` adapter exists only for tests and early local integration. The `local` adapter stores objects under `FILE_LOCAL_STORAGE_DIR` for local durable smoke tests. Neither adapter exposes object keys or storage paths through API responses.
 
 A future MinIO adapter should be added under `internal/platform/storage/minio` and wired through `internal/config` without changing `internal/http` handlers or service use cases.
 
@@ -79,7 +78,8 @@ File metadata is behind the service repository port. The current memory reposito
 Upload uses `multipart/form-data`:
 
 - `file`: required binary part
-- `tags`: optional repeated fields, for example `tags=policy` and `tags=inspection`
+- `checksumSha256`: optional SHA-256 checksum for `/internal/v1/files`; when omitted, the service computes it
+- `tags`: optional repeated fields for compatibility document uploads, for example `tags=policy` and `tags=inspection`
 
 ## Response Shape
 

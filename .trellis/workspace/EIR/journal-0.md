@@ -34,3 +34,36 @@ Implemented the first services/file Go module with internal RESTful upload, meta
 ### Next Steps
 
 - None - task complete
+
+
+## Session 2: File service issues 79 and 80
+
+**Date**: 2026-06-29
+**Task**: File service issues 79 and 80
+**Branch**: `EIRTeam/feat/file-service-module`
+
+### Summary
+
+Implemented the internal file object contract, object storage cleanup flow, repository migration/query scaffolding, documentation updates, and verification for GitHub issues 79 and 80.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `dca07d7` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

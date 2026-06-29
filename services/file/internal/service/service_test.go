@@ -64,6 +64,92 @@ func TestUploadDocumentStoresMetadataAndContent(t *testing.T) {
 	}
 }
 
+func TestCreateFileComputesChecksumAndStoresContent(t *testing.T) {
+	files := newTestService(t)
+	created, err := files.CreateFile(context.Background(), internalContext(), service.CreateFileInput{
+		FileName:    "policy.pdf",
+		ContentType: "application/pdf",
+		SizeBytes:   int64(len("content")),
+		Content:     strings.NewReader("content"),
+	})
+	if err != nil {
+		t.Fatalf("CreateFile() error = %v", err)
+	}
+	if created.ID != "file_1" {
+		t.Fatalf("file id = %q", created.ID)
+	}
+	if created.Filename != "policy.pdf" || created.ContentType != "application/pdf" || created.SizeBytes != int64(len("content")) {
+		t.Fatalf("file metadata = %+v", created)
+	}
+	if created.ChecksumSHA256 != "ed7002b439e9ac845f22357d822bac1444730fbdb6016d3ec9432297b9ec9f73" {
+		t.Fatalf("checksum = %q", created.ChecksumSHA256)
+	}
+	if created.StorageObjectKey == "" {
+		t.Fatal("storage object key is empty")
+	}
+
+	content, err := files.GetFileContent(context.Background(), internalContext(), created.ID)
+	if err != nil {
+		t.Fatalf("GetFileContent() error = %v", err)
+	}
+	defer content.Body.Close()
+	body, err := io.ReadAll(content.Body)
+	if err != nil {
+		t.Fatalf("ReadAll() error = %v", err)
+	}
+	if string(body) != "content" {
+		t.Fatalf("content = %q", string(body))
+	}
+}
+
+func TestCreateFileRejectsChecksumMismatch(t *testing.T) {
+	files := newTestService(t)
+	_, err := files.CreateFile(context.Background(), internalContext(), service.CreateFileInput{
+		FileName:       "policy.pdf",
+		ContentType:    "application/pdf",
+		SizeBytes:      int64(len("content")),
+		ChecksumSHA256: strings.Repeat("0", 64),
+		Content:        strings.NewReader("content"),
+	})
+	if !hasCode(err, service.CodeValidation) {
+		t.Fatalf("CreateFile() error = %v, want validation_error", err)
+	}
+}
+
+func TestDeleteFileHidesMetadataAndContent(t *testing.T) {
+	files := newTestService(t)
+	created, err := files.CreateFile(context.Background(), internalContext(), service.CreateFileInput{
+		FileName:    "policy.pdf",
+		ContentType: "application/pdf",
+		SizeBytes:   int64(len("content")),
+		Content:     strings.NewReader("content"),
+	})
+	if err != nil {
+		t.Fatalf("CreateFile() error = %v", err)
+	}
+	if err := files.DeleteFile(context.Background(), internalContext(), created.ID); err != nil {
+		t.Fatalf("DeleteFile() error = %v", err)
+	}
+	if _, err := files.GetFile(context.Background(), internalContext(), created.ID); !hasCode(err, service.CodeNotFound) {
+		t.Fatalf("GetFile() error = %v, want not_found", err)
+	}
+	if _, err := files.GetFileContent(context.Background(), internalContext(), created.ID); !hasCode(err, service.CodeNotFound) {
+		t.Fatalf("GetFileContent() error = %v, want not_found", err)
+	}
+}
+
+func TestCreateFileRequiresInternalCaller(t *testing.T) {
+	files := newTestService(t)
+	_, err := files.CreateFile(context.Background(), service.RequestContext{}, service.CreateFileInput{
+		FileName:    "policy.pdf",
+		ContentType: "application/pdf",
+		SizeBytes:   int64(len("content")),
+		Content:     strings.NewReader("content"),
+	})
+	if !hasCode(err, service.CodeUnauthorized) {
+		t.Fatalf("CreateFile() error = %v, want unauthorized", err)
+	}
+}
 func TestUpdateDocumentReplacesTags(t *testing.T) {
 	documents := newTestService(t)
 	doc := uploadTestDocument(t, documents)
@@ -155,6 +241,14 @@ func uploadTestDocument(t *testing.T, documents *service.Service) service.Docume
 		t.Fatalf("UploadDocument() error = %v", err)
 	}
 	return doc
+}
+
+func internalContext() service.RequestContext {
+	return service.RequestContext{
+		RequestID:     "req_test",
+		CallerService: "knowledge",
+		ServiceToken:  "test-token",
+	}
 }
 
 func actorContext() service.RequestContext {
