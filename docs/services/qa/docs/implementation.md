@@ -1,7 +1,7 @@
 # QA 服务实现说明
 
 版本：v0.1
-日期：2026-06-30
+日期：2026-06-29
 范围：`services/qa/` 当前实现、契约对齐、缺口和后续实现约束
 
 ## 1. 文档定位
@@ -107,7 +107,7 @@
 
 | 日期 | 检查人/工具 | 代码基准 | 结论 |
 | --- | --- | --- | --- |
-| 2026-06-30 | Codex #89 branch | `31711d9` + working tree | B-03 非流式 Agent Run MVP 覆盖成功、模型失败、超时、取消和 max-iterations；response_run、assistant message、初始事件和模型调用摘要保持一致。剩余风险为 Knowledge retrieval、跨服务 smoke 和 env-gated DB integration。 |
+| 2026-06-29 | Codex #89 branch | `31711d9` + working tree | B-03 非流式 Agent Run MVP 覆盖成功、模型失败、超时、取消和 max-iterations；response_run、assistant message、初始事件和模型调用摘要保持一致。剩余风险为 Knowledge retrieval、跨服务 smoke 和 env-gated DB integration。 |
 | 2026-06-29 | Codex after proxy rebase | `0e402ca` + working tree | QA route 层基本对齐，config 默认走 AI Gateway chat；主要剩余风险在 Knowledge retrieval 未完成和跨服务 smoke 未跑。 |
 | 2026-06-29 | Codex after rebase | `808c589` + working tree | QA route 层基本对齐，AI Gateway chat 下游已落地；当时主要剩余风险在 Knowledge retrieval 未完成、跨服务 smoke 未跑和 direct provider fallback 边界，后续 `develop` 已移除 DeepSeek fallback。 |
 | 2026-06-29 | Codex goal | `eddf917` + working tree | QA 代码量已较完整，route 层基本对齐；当时主要风险在 Knowledge/AI Gateway 下游未完成和 direct provider fallback 边界。 |
