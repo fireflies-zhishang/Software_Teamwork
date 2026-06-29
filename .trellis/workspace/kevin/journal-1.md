@@ -38,3 +38,36 @@ Implemented Auth source-of-truth user, session, token hashing, RBAC seed, intern
 ### Next Steps
 
 - None - task complete
+
+
+## Session 2: Auth PR review fixes
+
+**Date**: 2026-06-29
+**Task**: Auth PR review fixes
+**Branch**: `L1nggTeam/feat/auth-user-session-rbac`
+
+### Summary
+
+Addressed auth PR review feedback by aligning X-Service-Token OpenAPI auth, matching readyz schema to dependencies array, and downgrading post-commit security event failures to warning logs with regression tests.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `396b67d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
