@@ -76,6 +76,8 @@ function formToCreateRequest(form: FormData) {
     name: form.name,
     backend: form.backend,
     concurrency: form.concurrency,
+    enabled: true,
+    isDefault: false,
   }
 
   if (form.backend === 'remote_compatible' && form.endpointUrl.trim()) {
