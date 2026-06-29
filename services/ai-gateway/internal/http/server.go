@@ -292,7 +292,7 @@ func (s *Server) handleCreateChatCompletionStream(w http.ResponseWriter, r *http
 					usage = validation.usage
 				}
 				startStream()
-				if _, err := w.Write(chunk); err != nil {
+				if _, err := w.Write(validation.chunk); err != nil {
 					status = service.InvocationCancelled
 					streamErr = &service.OpenAIError{HTTPStatus: http.StatusBadGateway, Message: "request was cancelled", Type: "upstream_error", Code: "cancelled", Err: err}
 					break
@@ -582,6 +582,7 @@ func parseStreamUsage(chunk []byte) *service.TokenUsage {
 }
 
 type streamChunkValidation struct {
+	chunk []byte
 	skip  bool
 	done  bool
 	usage *service.TokenUsage
@@ -598,12 +599,13 @@ func validateStreamChunk(chunk []byte) streamChunkValidation {
 	}
 	payload := bytes.TrimSpace(bytes.TrimPrefix(line, []byte("data:")))
 	if bytes.Equal(payload, []byte("[DONE]")) {
-		return streamChunkValidation{done: true}
+		return streamChunkValidation{chunk: []byte("data: [DONE]\n"), done: true}
 	}
-	if !isOpenAIChatCompletionChunk(payload) {
+	sanitized, ok := sanitizeOpenAIChatCompletionChunk(payload)
+	if !ok {
 		return invalidProviderStreamChunk()
 	}
-	return streamChunkValidation{usage: parseStreamUsage(chunk)}
+	return streamChunkValidation{chunk: append(append([]byte("data: "), sanitized...), '\n'), usage: parseStreamUsage(chunk)}
 }
 
 func invalidProviderStreamChunk() streamChunkValidation {
@@ -615,14 +617,141 @@ func invalidProviderStreamChunk() streamChunkValidation {
 	}}
 }
 
-func isOpenAIChatCompletionChunk(payload []byte) bool {
-	var value struct {
-		Object string `json:"object"`
+func sanitizeOpenAIChatCompletionChunk(payload []byte) ([]byte, bool) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &raw); err != nil {
+		return nil, false
 	}
-	if err := json.Unmarshal(payload, &value); err != nil {
-		return false
+	if streamRawString(raw["object"]) != "chat.completion.chunk" {
+		return nil, false
 	}
-	return value.Object == "chat.completion.chunk"
+	sanitized := map[string]json.RawMessage{}
+	copyRawFields(sanitized, raw, "id", "object", "created", "model", "system_fingerprint")
+	choices, ok := raw["choices"]
+	if !ok {
+		return nil, false
+	}
+	sanitizedChoices, valid := sanitizeStreamChoices(choices)
+	if !valid {
+		return nil, false
+	}
+	sanitized["choices"] = sanitizedChoices
+	if usage, ok := raw["usage"]; ok {
+		sanitizedUsage, valid := sanitizeStreamUsage(usage)
+		if !valid {
+			return nil, false
+		}
+		sanitized["usage"] = sanitizedUsage
+	}
+	encoded, err := json.Marshal(sanitized)
+	return encoded, err == nil
+}
+
+func sanitizeStreamChoices(rawChoices json.RawMessage) (json.RawMessage, bool) {
+	var choices []map[string]json.RawMessage
+	if err := json.Unmarshal(rawChoices, &choices); err != nil {
+		return nil, false
+	}
+	sanitizedChoices := make([]map[string]json.RawMessage, 0, len(choices))
+	for _, choice := range choices {
+		sanitizedChoice := map[string]json.RawMessage{}
+		copyRawFields(sanitizedChoice, choice, "index", "finish_reason")
+		if delta, ok := choice["delta"]; ok {
+			sanitizedDelta, valid := sanitizeStreamDelta(delta)
+			if !valid {
+				return nil, false
+			}
+			sanitizedChoice["delta"] = sanitizedDelta
+		}
+		sanitizedChoices = append(sanitizedChoices, sanitizedChoice)
+	}
+	encoded, err := json.Marshal(sanitizedChoices)
+	return encoded, err == nil
+}
+
+func sanitizeStreamDelta(rawDelta json.RawMessage) (json.RawMessage, bool) {
+	var delta map[string]json.RawMessage
+	if err := json.Unmarshal(rawDelta, &delta); err != nil {
+		return nil, false
+	}
+	sanitizedDelta := map[string]json.RawMessage{}
+	copyRawFields(sanitizedDelta, delta, "role", "content", "refusal")
+	if functionCall, ok := delta["function_call"]; ok {
+		sanitizedFunctionCall, valid := sanitizeNamedArguments(functionCall)
+		if !valid {
+			return nil, false
+		}
+		sanitizedDelta["function_call"] = sanitizedFunctionCall
+	}
+	if toolCalls, ok := delta["tool_calls"]; ok {
+		sanitizedToolCalls, valid := sanitizeStreamToolCalls(toolCalls)
+		if !valid {
+			return nil, false
+		}
+		sanitizedDelta["tool_calls"] = sanitizedToolCalls
+	}
+	encoded, err := json.Marshal(sanitizedDelta)
+	return encoded, err == nil
+}
+
+func sanitizeStreamToolCalls(rawToolCalls json.RawMessage) (json.RawMessage, bool) {
+	var toolCalls []map[string]json.RawMessage
+	if err := json.Unmarshal(rawToolCalls, &toolCalls); err != nil {
+		return nil, false
+	}
+	sanitizedToolCalls := make([]map[string]json.RawMessage, 0, len(toolCalls))
+	for _, toolCall := range toolCalls {
+		sanitizedToolCall := map[string]json.RawMessage{}
+		copyRawFields(sanitizedToolCall, toolCall, "index", "id", "type")
+		if function, ok := toolCall["function"]; ok {
+			sanitizedFunction, valid := sanitizeNamedArguments(function)
+			if !valid {
+				return nil, false
+			}
+			sanitizedToolCall["function"] = sanitizedFunction
+		}
+		sanitizedToolCalls = append(sanitizedToolCalls, sanitizedToolCall)
+	}
+	encoded, err := json.Marshal(sanitizedToolCalls)
+	return encoded, err == nil
+}
+
+func sanitizeNamedArguments(rawValue json.RawMessage) (json.RawMessage, bool) {
+	var value map[string]json.RawMessage
+	if err := json.Unmarshal(rawValue, &value); err != nil {
+		return nil, false
+	}
+	sanitized := map[string]json.RawMessage{}
+	copyRawFields(sanitized, value, "name", "arguments")
+	encoded, err := json.Marshal(sanitized)
+	return encoded, err == nil
+}
+
+func sanitizeStreamUsage(rawUsage json.RawMessage) (json.RawMessage, bool) {
+	var usage map[string]json.RawMessage
+	if err := json.Unmarshal(rawUsage, &usage); err != nil {
+		return nil, false
+	}
+	sanitizedUsage := map[string]json.RawMessage{}
+	copyRawFields(sanitizedUsage, usage, "prompt_tokens", "completion_tokens", "total_tokens")
+	encoded, err := json.Marshal(sanitizedUsage)
+	return encoded, err == nil
+}
+
+func copyRawFields(dst, src map[string]json.RawMessage, fields ...string) {
+	for _, field := range fields {
+		if value, ok := src[field]; ok {
+			dst[field] = value
+		}
+	}
+}
+
+func streamRawString(raw json.RawMessage) string {
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(value)
 }
 
 func statusForCode(code service.Code) int {
