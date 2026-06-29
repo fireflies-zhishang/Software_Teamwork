@@ -1,4 +1,3 @@
-import { deleteCurrentSession } from '@/api/auth'
 import { apiClient } from '@/api/client'
 import { Link, useRouter, useRouterState } from '@tanstack/react-router'
 import { Loader2, LogOut, RefreshCw, ShieldAlert } from 'lucide-react'
@@ -105,13 +104,14 @@ export function AppLayout({ children }: PropsWithChildren) {
   const handleLogout = () => {
     const token = apiClient.getToken()
     void router.navigate({ to: '/login' })
-    useAuthStore.getState().clearSession()
-    // Fire-and-forget: end the server session with the captured token
+    // Fire-and-forget: end the server session BEFORE clearing local token
     if (token && token !== 'dev-token-bypass') {
-      void (async () => {
-        try { await deleteCurrentSession() } catch { /* best-effort */ }
-      })()
+      void fetch(`${apiClient.baseUrl}/sessions/current`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => { /* best-effort */ })
     }
+    useAuthStore.getState().clearSession()
   }
 
   return (
