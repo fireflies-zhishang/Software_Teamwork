@@ -20,15 +20,16 @@ jobs:
           PROJECTS_TOKEN: ${{ secrets.PROJECTS_TOKEN }}
         with:
           script: |
-            const { getOctokit } = require('@actions/github');
-
             const projectOwner = 'Sakayori-Iroha-168';
             const projectNumber = 1;
             const projectName = 'Software Teamwork';
-            const projectOctokit = process.env.PROJECTS_TOKEN
-              ? getOctokit(process.env.PROJECTS_TOKEN)
-              : github;
-            const projectGraphql = projectOctokit.graphql;
+            const projectGraphql = process.env.PROJECTS_TOKEN
+              ? github.graphql.defaults({
+                headers: {
+                  authorization: `token ${process.env.PROJECTS_TOKEN}`,
+                },
+              })
+              : github.graphql;
             const issue = context.payload.issue;
             const body = issue.body || '';
 
