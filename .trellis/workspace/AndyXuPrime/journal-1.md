@@ -778,3 +778,36 @@ Rebased onto upstream/develop@92d3afc after another develop update, refreshed Tr
 ### Next Steps
 
 - None - task complete
+
+
+## Session 23: F-016 completed message id fallback
+
+**Date**: 2026-06-30
+**Task**: F-016 completed message id fallback
+**Branch**: `Frontend/feat/qa-capability-aligned-chat`
+
+### Summary
+
+Addressed latest Codex review by allowing answer.completed to use messageId as the assistant message id fallback and covered it in the page stream sequencing test.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `519668d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
