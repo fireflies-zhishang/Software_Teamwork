@@ -162,7 +162,8 @@ func (s *ReportFileService) CreateReportFile(ctx context.Context, reqCtx Request
 		return ReportFile{}, dependencyError("enqueue report file job", err)
 	}
 	if err := s.repo.UpdateJobAsynqTaskID(ctx, createdJob.ID, taskID); err != nil {
-		return ReportFile{}, dependencyError("persist report file job task id", err)
+		_ = s.repo.UpdateAttemptAsynqTaskID(ctx, createdAttempt.ID, taskID)
+		return reportFile, nil
 	}
 	_ = s.repo.UpdateAttemptAsynqTaskID(ctx, createdAttempt.ID, taskID)
 	return reportFile, nil

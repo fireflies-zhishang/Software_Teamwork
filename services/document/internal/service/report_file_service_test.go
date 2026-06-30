@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -11,11 +12,12 @@ import (
 )
 
 type fakeReportFileRepository struct {
-	reports  map[string]Report
-	sections []ReportSection
-	files    map[string]ReportFile
-	jobs     map[string]ReportJob
-	attempts map[string]ReportJobAttempt
+	reports   map[string]Report
+	sections  []ReportSection
+	files     map[string]ReportFile
+	jobs      map[string]ReportJob
+	attempts  map[string]ReportJobAttempt
+	taskIDErr error
 }
 
 func newFakeReportFileRepository() *fakeReportFileRepository {
@@ -64,6 +66,9 @@ func (f *fakeReportFileRepository) UpdateReportJobStatus(_ context.Context, id s
 }
 
 func (f *fakeReportFileRepository) UpdateJobAsynqTaskID(_ context.Context, id, taskID string) error {
+	if f.taskIDErr != nil {
+		return f.taskIDErr
+	}
 	job := f.jobs[id]
 	job.AsynqTaskID = taskID
 	f.jobs[id] = job
@@ -176,6 +181,37 @@ func TestCreateReportFileCreatesPendingJobAndSafeMetadata(t *testing.T) {
 	}
 	if !queue.called {
 		t.Fatal("expected queue handoff")
+	}
+}
+
+func TestCreateReportFileReturnsMetadataWhenTaskIDPersistenceFailsAfterEnqueue(t *testing.T) {
+	repo := newFakeReportFileRepository()
+	repo.taskIDErr = errors.New("postgres unavailable")
+	repo.reports["report-1"] = Report{ID: "report-1", Name: "Traceable", CreatorID: "user-1", Status: ReportStatusGenerated}
+	queue := &fakeReportFileQueue{}
+	svc := NewReportFileService(repo, &fakeReportFileContentClient{}, queue, NewSimpleDOCXGenerator())
+
+	file, err := svc.CreateReportFile(context.Background(), RequestContext{UserID: "user-1", RequestID: "req-1"}, CreateReportFileInput{
+		ReportID: "report-1",
+		Format:   "docx",
+	})
+	if err != nil {
+		t.Fatalf("CreateReportFile() error = %v", err)
+	}
+	if file.ID == "" || file.JobID == "" {
+		t.Fatalf("expected traceable report file metadata, got %+v", file)
+	}
+	if !queue.called {
+		t.Fatal("expected queue handoff")
+	}
+	foundAttemptTaskID := false
+	for _, attempt := range repo.attempts {
+		if attempt.JobID == file.JobID && attempt.AsynqTaskID == "task-1" {
+			foundAttemptTaskID = true
+		}
+	}
+	if !foundAttemptTaskID {
+		t.Fatalf("expected attempt task id to remain traceable, attempts=%+v", repo.attempts)
 	}
 }
 

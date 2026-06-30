@@ -8,8 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Sakayori-Iroha-168/Software_Teamwork/services/document/internal/repository/sqlc"
 	"github.com/Sakayori-Iroha-168/Software_Teamwork/services/document/internal/service"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // --- Reports ---
@@ -817,7 +819,38 @@ func (r *PostgresRepository) UpdateReportFile(ctx context.Context, value service
 	if err != nil {
 		return service.ReportFile{}, err
 	}
-	row := r.db.QueryRow(ctx, `
+	if value.Status == service.ReportFileStatusSucceeded {
+		tx, err := r.pool.Begin(ctx)
+		if err != nil {
+			return service.ReportFile{}, fmt.Errorf("begin report file update transaction: %w", err)
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+
+		updated, err := updateReportFileRow(ctx, tx, reportFileID, jobID, value)
+		if err != nil {
+			return service.ReportFile{}, err
+		}
+		exportedAt := time.Now().UTC()
+		if _, err := tx.Exec(ctx, `
+			UPDATE reports
+			SET
+				latest_report_file_id = $1,
+				status = 'exported',
+				exported_at = $2,
+				updated_at = $2
+			WHERE id = $3`, reportFileID, exportedAt, updated.ReportID); err != nil {
+			return service.ReportFile{}, fmt.Errorf("update report export metadata: %w", err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return service.ReportFile{}, fmt.Errorf("commit report file update transaction: %w", err)
+		}
+		return updated, nil
+	}
+	return updateReportFileRow(ctx, r.db, reportFileID, jobID, value)
+}
+
+func updateReportFileRow(ctx context.Context, db sqlc.DBTX, reportFileID pgtype.UUID, jobID string, value service.ReportFile) (service.ReportFile, error) {
+	row := db.QueryRow(ctx, `
 		UPDATE report_files SET
 			job_id = NULLIF($2, '')::uuid,
 			filename = $3,
@@ -844,18 +877,6 @@ func (r *PostgresRepository) UpdateReportFile(ctx context.Context, value service
 			return service.ReportFile{}, service.NewError(service.CodeNotFound, "report file not found", err)
 		}
 		return service.ReportFile{}, fmt.Errorf("update report file: %w", err)
-	}
-	if updated.Status == service.ReportFileStatusSucceeded {
-		if _, err := r.db.Exec(ctx, `
-			UPDATE reports
-			SET
-				latest_report_file_id = $1,
-				status = 'exported',
-				exported_at = $2,
-				updated_at = $2
-			WHERE id = $3`, reportFileID, time.Now().UTC(), updated.ReportID); err != nil {
-			return service.ReportFile{}, fmt.Errorf("update report export metadata: %w", err)
-		}
 	}
 	return updated, nil
 }

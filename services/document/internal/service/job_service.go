@@ -152,7 +152,8 @@ func (s *JobService) CreateJob(ctx context.Context, rctx RequestContext, input C
 		return ReportJob{}, fmt.Errorf("enqueue job task: %w", err)
 	}
 	if err := s.repo.UpdateJobAsynqTaskID(ctx, created.ID, taskID); err != nil {
-		return ReportJob{}, fmt.Errorf("job created (id=%s) but asynq_task_id not persisted: %w", created.ID, err)
+		_ = s.repo.UpdateAttemptAsynqTaskID(ctx, attempt.ID, taskID)
+		return created, nil
 	}
 	_ = s.repo.UpdateAttemptAsynqTaskID(ctx, attempt.ID, taskID)
 	created.AsynqTaskID = taskID

@@ -144,6 +144,28 @@ func TestJobServiceCreateJobRecordsFailedOperationLogWhenEnqueueFails(t *testing
 	}
 }
 
+func TestJobServiceCreateJobReturnsTraceableJobWhenTaskIDPersistenceFailsAfterEnqueue(t *testing.T) {
+	ctx := context.Background()
+	repo := &fakeJobRepository{
+		report:    Report{ID: "report-1", CreatorID: "user-1"},
+		taskIDErr: errors.New("postgres unavailable"),
+	}
+	svc := NewJobService(repo, &fakeTaskEnqueuer{})
+
+	job, err := svc.CreateJob(ctx, RequestContext{UserID: "user-1", RequestID: "req-job-trace"}, CreateJobInput{
+		RequestID: "req-job-trace",
+		UserID:    "user-1",
+		ReportID:  "report-1",
+		JobType:   JobTypeContentGeneration,
+	})
+	if err != nil {
+		t.Fatalf("CreateJob() error = %v", err)
+	}
+	if job.ID == "" || job.ReportID != "report-1" {
+		t.Fatalf("expected traceable job metadata, got %+v", job)
+	}
+}
+
 func TestJobServiceRetryJobDoesNotPersistRawReason(t *testing.T) {
 	ctx := context.Background()
 	repo := &fakeJobRepository{
@@ -179,6 +201,7 @@ type fakeJobRepository struct {
 	job           ReportJob
 	reportFile    ReportFile
 	operationLogs []OperationLog
+	taskIDErr     error
 }
 
 func (f *fakeJobRepository) GetReportByID(context.Context, string) (Report, error) {
@@ -205,6 +228,9 @@ func (f *fakeJobRepository) UpdateReportJobStatus(context.Context, string, JobSt
 }
 
 func (f *fakeJobRepository) UpdateJobAsynqTaskID(context.Context, string, string) error {
+	if f.taskIDErr != nil {
+		return f.taskIDErr
+	}
 	return nil
 }
 
