@@ -8,7 +8,7 @@
 
 | 范围 | 当前状态 | 说明 |
 | --- | --- | --- |
-| 根级本地/演示 Compose | partial | `deploy/docker-compose.yml` 已提供共享 PostgreSQL、Redis、Qdrant、MinIO、Parser、服务 migration、`seed-local` / `seed-local-ai` 和服务串联基线；仍缺统一跨服务 smoke 和一键验收脚本，现有 seed data 只覆盖本地登录、基础报告类型、示例知识库和 AI profile placeholder。 |
+| 根级本地/演示 Compose | partial | `deploy/docker-compose.yml` 已提供共享 PostgreSQL、Redis、Parser、服务 migration、`seed-local` / `seed-local-ai` 和基础服务串联；Compose 也会启动 Qdrant/MinIO 容器，但默认 Knowledge 使用 in-memory vector index、File 使用 local storage，Qdrant/MinIO 仍需环境配置和 smoke 验证后才算接入业务链路；现有 seed data 只覆盖本地登录、基础报告类型、示例知识库和 AI profile placeholder。 |
 | QA 服务 Compose | partial | `services/qa/docker-compose.yml` 会启动 QA PostgreSQL、Auth PostgreSQL、Redis、Auth、QA 和 Gateway；不包含 Knowledge、Document、File、AI Gateway。 |
 | Document 服务 Compose | partial | `services/document/docker-compose.yml` 会启动 Document PostgreSQL、Redis、migration 和 Document；不包含 File、AI Gateway。 |
 | AI Gateway 本地运行 | root profile / host-run | 根级 `docker compose --profile ai` 会启动 AI Gateway、migration 和 placeholder profile seed；单独调试时也可 host-run，真实 provider smoke 仍需配置有效 provider key。 |
