@@ -4,19 +4,13 @@ on:
   pull_request:
     branches: [develop]
     paths:
-      - 'services/**/Dockerfile*'
-      - 'services/**/.dockerignore'
-      - 'services/**/docker-compose*.yml'
-      - 'services/**/docker-compose*.yaml'
+      - 'services/**'
       - 'deploy/**'
       - '.github/workflows/docker-deploy-checks.yml'
   push:
     branches: [develop]
     paths:
-      - 'services/**/Dockerfile*'
-      - 'services/**/.dockerignore'
-      - 'services/**/docker-compose*.yml'
-      - 'services/**/docker-compose*.yaml'
+      - 'services/**'
       - 'deploy/**'
       - '.github/workflows/docker-deploy-checks.yml'
 
@@ -52,6 +46,17 @@ jobs:
               'services/qa/Dockerfile.host',
               'services/qa/Dockerfile.migrate',
             ]);
+            const sourceBackedDockerfiles = new Set([
+              'services/ai-gateway/Dockerfile',
+              'services/auth/Dockerfile',
+              'services/document/Dockerfile',
+              'services/file/Dockerfile',
+              'services/gateway/Dockerfile',
+              'services/knowledge/Dockerfile',
+              'services/parser/Dockerfile',
+              'services/qa/Dockerfile',
+              'services/qa/Dockerfile.host',
+            ]);
             const qaComposeFile = 'services/qa/docker-compose.yml';
             const qaDbComposeFile = 'services/qa/docker-compose.db.yml';
             const knownComposeFiles = new Set([
@@ -64,6 +69,8 @@ jobs:
               /^(deploy|services\/[^/]+)\/.*docker-compose[^/]*\.ya?ml$/u;
             const buildableDockerfilePattern =
               /^(deploy|services\/[^/]+)\/Dockerfile(?:\.(?:host|migrate))?$/u;
+            const serviceDockerInputPattern =
+              /^services\/([^/]+)\/(?!(?:Dockerfile(?:\.(?:host|migrate))?|\.dockerignore|docker-compose[^/]*\.ya?ml)$).+/u;
             const rootDeployComposeFile = 'deploy/docker-compose.yml';
             const rootDeployComposeDependencyPattern =
               /^deploy\/(?:\.env\.example|postgres\/init\/.+|seeds\/.+)$/u;
@@ -112,6 +119,14 @@ jobs:
                 }
               }
             };
+            const addSourceBackedDockerfilesForService = (service) => {
+              const prefix = `services/${service}/`;
+              for (const dockerfile of sourceBackedDockerfiles) {
+                if (dockerfile.startsWith(prefix)) {
+                  dockerfiles.add(dockerfile);
+                }
+              }
+            };
 
             if (workflowChanged) {
               for (const dockerfile of currentBuildableDockerfiles) {
@@ -129,7 +144,13 @@ jobs:
 
                 const dockerignoreMatch = file.match(/^services\/([^/]+)\/\.dockerignore$/u);
                 if (dockerignoreMatch) {
-                  addBuildableDockerfilesForService(dockerignoreMatch[1]);
+                  addSourceBackedDockerfilesForService(dockerignoreMatch[1]);
+                  continue;
+                }
+
+                const serviceDockerInputMatch = file.match(serviceDockerInputPattern);
+                if (serviceDockerInputMatch) {
+                  addSourceBackedDockerfilesForService(serviceDockerInputMatch[1]);
                 }
               }
             }

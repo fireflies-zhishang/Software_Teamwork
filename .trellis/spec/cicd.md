@@ -349,7 +349,7 @@ Product workflow files:
 |----------|----------------|---------|
 | Frontend CI | `.github/workflows/frontend.yml` | `apps/web/**` |
 | Go Services CI | `.github/workflows/go-services.yml` | `services/**` |
-| Docker / Deploy Checks | `.github/workflows/docker-deploy-checks.yml` | service Dockerfiles, service Compose files, `deploy/**` |
+| Docker / Deploy Checks | `.github/workflows/docker-deploy-checks.yml` | service image inputs, service Compose files, `deploy/**` |
 | Deploy | `.github/workflows/deploy.yml` | protected branch or manual dispatch |
 
 Use path filters so unrelated documentation or service changes do not run every
@@ -627,6 +627,8 @@ Rules:
 - Use multi-stage builds for Go services.
 - Produce small runtime images.
 - Build images for changed services on PRs.
+- Treat service source, module/lock files, Dockerfile, and `.dockerignore`
+  changes as image inputs for the service's source-backed Dockerfiles.
 - Push images only from trusted branches or manual release workflows.
 - Tag images with commit SHA and, when applicable, branch or release tags.
 - Never build images with secrets baked into layers.
@@ -710,9 +712,10 @@ workflow sections above. For PRs:
 - Frontend changes are covered by Frontend CI; local `bun run --cwd apps/web check`,
   `bun run --cwd apps/web build`, and targeted tests remain useful PR-before
   evidence.
-- Docker/Compose config checks are covered for existing buildable Dockerfiles and
-  service Compose files; image push, full DB integration jobs, and cross-service
-  smoke remain future gates until stable workflows land.
+- Docker/Compose config checks are covered for affected service image inputs,
+  existing buildable Dockerfiles, and service Compose files; image push, full DB
+  integration jobs, and cross-service smoke remain future gates until stable
+  workflows land.
 - Documentation changes update README/specs when architecture, commands,
   contracts, or implementation status change.
 
