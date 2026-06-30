@@ -1,4 +1,7 @@
-FROM postgres:16-alpine
+ARG IMAGE_REGISTRY_PREFIX=
+ARG POSTGRES_VERSION=16-alpine
+
+FROM ${IMAGE_REGISTRY_PREFIX}postgres:${POSTGRES_VERSION}
 
 USER root
 RUN mkdir -p /workspace && chown postgres:postgres /workspace
@@ -8,4 +11,3 @@ USER postgres
 WORKDIR /workspace
 EXPOSE 8084
 ENTRYPOINT ["qa-server"]
-

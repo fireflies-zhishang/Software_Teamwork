@@ -4,3 +4,11 @@
 __pycache__/
 *.pyc
 tests/
+.git
+.env
+.env.*
+*.log
+dist/
+build/
+tmp/
+temp/

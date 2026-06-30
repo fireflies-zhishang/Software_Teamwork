@@ -3,7 +3,7 @@ include:
 
 services:
   auth-postgres:
-    image: postgres:16-alpine
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
     environment:
       POSTGRES_DB: auth_system
       POSTGRES_USER: auth_app
@@ -21,7 +21,7 @@ services:
       retries: 20
 
   redis:
-    image: redis:7-alpine
+    image: ${REDIS_IMAGE:-redis:7-alpine}
     ports:
       - "${GATEWAY_REDIS_PORT:-6379}:6379"
     healthcheck:
@@ -34,6 +34,11 @@ services:
     build:
       context: ../auth
       dockerfile: ${AUTH_DOCKERFILE:-Dockerfile}
+      args:
+        IMAGE_REGISTRY_PREFIX: ${DOCKER_IMAGE_REGISTRY_PREFIX:-}
+        GOPROXY: ${GO_DOCKER_GOPROXY:-https://proxy.golang.org,direct}
+        GOSUMDB: ${GO_DOCKER_GOSUMDB:-sum.golang.org}
+        ALPINE_MIRROR: ${ALPINE_MIRROR:-}
     environment:
       AUTH_HTTP_ADDR: :8081
       AUTH_DATABASE_URL: postgres://auth_app:auth_app_dev@auth-postgres:5432/auth_system?sslmode=disable
@@ -57,6 +62,11 @@ services:
     build:
       context: .
       dockerfile: ${QA_DOCKERFILE:-Dockerfile}
+      args:
+        IMAGE_REGISTRY_PREFIX: ${DOCKER_IMAGE_REGISTRY_PREFIX:-}
+        GOPROXY: ${GO_DOCKER_GOPROXY:-https://proxy.golang.org,direct}
+        GOSUMDB: ${GO_DOCKER_GOSUMDB:-sum.golang.org}
+        ALPINE_MIRROR: ${ALPINE_MIRROR:-}
     environment:
       QA_HTTP_ADDR: :8084
       QA_DATABASE_URL: postgres://qa_app:qa_app_dev@postgres:5432/qa_system?sslmode=disable
@@ -88,6 +98,11 @@ services:
     build:
       context: ../gateway
       dockerfile: ${GATEWAY_DOCKERFILE:-Dockerfile}
+      args:
+        IMAGE_REGISTRY_PREFIX: ${DOCKER_IMAGE_REGISTRY_PREFIX:-}
+        GOPROXY: ${GO_DOCKER_GOPROXY:-https://proxy.golang.org,direct}
+        GOSUMDB: ${GO_DOCKER_GOSUMDB:-sum.golang.org}
+        ALPINE_MIRROR: ${ALPINE_MIRROR:-}
     environment:
       GATEWAY_HTTP_ADDR: :8080
       GATEWAY_AUTH_BASE_URL: http://auth:8081

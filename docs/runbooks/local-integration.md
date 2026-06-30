@@ -29,6 +29,23 @@
 | Redis | `redis:7-alpine` | Gateway session cache、QA/Document 队列。 |
 | Alpine runtime | `alpine:3.22` | Go 服务 runtime 和 migration 镜像的运行阶段。 |
 
+Docker 构建优先级按“能跑 > 构建快 > 镜像小 > 内存少 > 存储少”处理。默认
+Go Docker build 使用 `GO_DOCKER_GOPROXY=https://proxy.golang.org,direct` 和
+`GO_DOCKER_GOSUMDB=sum.golang.org`，保持 checksum verification 开启；国内网络
+需要加速时显式设置：
+
+```bash
+export GO_DOCKER_GOPROXY=https://goproxy.cn,direct
+export GO_DOCKER_GOSUMDB=sum.golang.google.cn
+```
+
+不要把 `GOSUMDB=off` 当作普通修复。`goproxy.cn` 的 `sum.golang.org` 代理路径
+曾导致 goose migration 镜像构建校验失败；使用 `sum.golang.google.cn` 可以绕开该
+第三方 sumdb 代理路径，同时保留模块校验。
+
+Docker daemon mirror、Alpine/Debian/Python 镜像源、BuildKit cache 和磁盘清理见
+[`Docker 构建环境与镜像源`](./docker-build-environment.md)。
+
 需要访问 GitHub、Go module proxy、npm registry 或 provider 时，按本机 `proxy` 约定给单条命令加代理环境变量：
 
 ```bash

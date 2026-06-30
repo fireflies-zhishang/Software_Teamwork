@@ -3,9 +3,11 @@
 .env.*
 !.env.example
 *.log
-coverage.out
+*.exe
+*.test
 coverage.*
-qa-server
+bin/
 dist/
 tmp/
 temp/
+data/

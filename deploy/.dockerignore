@@ -3,9 +3,7 @@
 .env.*
 !.env.example
 *.log
-coverage.out
-coverage.*
-qa-server
-dist/
 tmp/
 temp/
+postgres/
+seeds/

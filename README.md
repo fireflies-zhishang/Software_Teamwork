@@ -129,7 +129,7 @@ cp deploy/.env.example deploy/.env
 docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d postgres redis qdrant minio minio-init
 ```
 
-完整本地后端栈见 [deploy/README.md](deploy/README.md)。
+完整本地后端栈见 [deploy/README.md](deploy/README.md)。Docker 镜像源、BuildKit cache、Go sumdb 和 Alpine/Debian/PyPI/uv 镜像配置见 [Docker 构建环境与镜像源](docs/runbooks/docker-build-environment.md)。
 
 启动前端：
 

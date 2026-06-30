@@ -629,6 +629,14 @@ Rules:
 
 - Use multi-stage builds for Go services.
 - Produce small runtime images.
+- Dockerfiles may use BuildKit cache mounts for dependency caches; CI Docker
+  build jobs must set `DOCKER_BUILDKIT=1` when cache mounts are present.
+- Defaults must favor runnable, verified builds over the fastest mirror. Go
+  builds should keep checksum verification enabled and expose mirror choices as
+  explicit build args.
+- Compose infrastructure images must keep pinned defaults and may expose
+  full-image override variables for local or enterprise registries. Do not use
+  `latest` as a default or documented normal path.
 - Build images for changed services on PRs.
 - Treat service source, module/lock files, Dockerfile, and `.dockerignore`
   changes as image inputs for the service's source-backed Dockerfiles.

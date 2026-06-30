@@ -45,8 +45,8 @@
 | 前端 API 类型 | `bun run --cwd apps/web api:generate`；确认 generated diff 符合预期。 |
 | 单个 Go 服务 | `cd services/<service> && go test ./...`；`go build ./cmd/server`。 |
 | QA 服务 | `cd services/qa && go test ./...`；`go build ./cmd/server`；`go build ./cmd/agent`。 |
-| Dockerfile | 对变更的可构建 Dockerfile 执行 `docker build --file <Dockerfile> <context>`；不 push 镜像。 |
-| Compose | `docker compose -f <compose-file> config --quiet`。 |
+| Dockerfile | 对变更的可构建 Dockerfile 执行 `DOCKER_BUILDKIT=1 docker build --file <Dockerfile> <context>`；不 push 镜像。若本机 Docker daemon mirror 在 base image metadata 阶段返回 401/超时，应先按 Docker runbook 修正 mirror，或在 PR 记录为环境阻断。 |
+| Compose | `docker compose -f <compose-file> config --quiet`；根级 Compose 额外跑 `--env-file deploy/.env.example` 和 `--profile ai`。 |
 | Knowledge repository / SQL | `cd services/knowledge && KNOWLEDGE_TEST_DATABASE_URL='postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable' go test ./internal/repository -count=1`。 |
 | migration | `go run github.com/pressly/goose/v3/cmd/goose@v3.27.1 -dir migrations postgres "$DATABASE_URL" up`。 |
 | Parser 契约 / 文档 / runtime | 检查 `docs/services/parser/api/internal.openapi.yaml`、`services/parser/api/openapi.yaml`（实现本地副本）与 `docs/services/parser/README.md`、Knowledge ingestion 文档一致；如改 runtime，执行 `cd services/parser && uv run ruff check . && uv run pytest && uv run python -m compileall src tests`，并说明是否仅覆盖 fake OCR backend。触碰 PaddleOCR runtime 时，在具备模型环境下追加 `PARSER_PADDLEOCR_SMOKE=1 PARSER_PADDLEOCR_ALLOW_DOWNLOAD=1 uv run pytest -m paddleocr_smoke -s`。 |
@@ -109,6 +109,7 @@ KNOWLEDGE_TEST_DATABASE_URL='postgres://postgres:postgres@localhost:5432/postgre
 | 服务能力、stub/501 状态、worker、provider adapter 或 migration 变化 | 对应服务 `docs/implementation.md`。 |
 | OpenAPI / Gateway active path / 数据模型变化 | OpenAPI、owner map、README、service boundaries 或相关契约文档；契约语义变化需先交管理组决策。 |
 | runtime dependency / Compose / CI 变化 | `technology-decisions.md`、runbook 或本文。 |
+| Dockerfile、Compose image、Docker daemon mirror、Go proxy/sumdb、apk/apt/PyPI/uv 源变化 | `docs/runbooks/docker-build-environment.md`、`deploy/README.md`、`docs/architecture/technology-decisions.md` 和相关 Trellis spec；Compose 基础镜像覆盖变量必须保持 pinned 默认，不得把正常路径改成 `latest`。 |
 | Parser runtime、PaddleOCR、Python packaging、Parser Docker 或 HTTP tests 变化 | Parser README、`technology-decisions.md`、runbook 和本文。 |
 | open PR 或未合入能力 | 只能写 pending、待合入或 follow-up，不得写成已实现。 |
 

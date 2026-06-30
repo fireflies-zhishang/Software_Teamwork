@@ -157,7 +157,24 @@ uv run parser-service
 Build the runtime image:
 
 ```bash
+DOCKER_BUILDKIT=1 \
 docker build -t software-teamwork-parser:local .
+```
+
+The Parser image intentionally stays on `python:3.12-slim` instead of Alpine.
+PaddleOCR/Paddle dependencies rely on native Python wheels and system libraries;
+the optimization target is runnable OCR first, then cached builds and clean
+runtime layers.
+
+Optional local mirror example:
+
+```bash
+DOCKER_BUILDKIT=1 docker build \
+  --build-arg DEBIAN_APT_MIRROR=https://mirrors.tuna.tsinghua.edu.cn/debian \
+  --build-arg DEBIAN_SECURITY_APT_MIRROR=https://mirrors.tuna.tsinghua.edu.cn/debian-security \
+  --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
+  --build-arg UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple \
+  -t software-teamwork-parser:local .
 ```
 
 ## Configuration

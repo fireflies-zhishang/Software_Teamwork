@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
     environment:
       POSTGRES_DB: qa_system
       POSTGRES_USER: qa_app
@@ -20,6 +20,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.migrate
+      args:
+        IMAGE_REGISTRY_PREFIX: ${DOCKER_IMAGE_REGISTRY_PREFIX:-}
+        GOPROXY: ${GO_DOCKER_GOPROXY:-https://proxy.golang.org,direct}
+        GOSUMDB: ${GO_DOCKER_GOSUMDB:-sum.golang.org}
+        ALPINE_MIRROR: ${ALPINE_MIRROR:-}
     environment:
       GOOSE_DRIVER: postgres
       GOOSE_DBSTRING: postgres://qa_app:qa_app_dev@postgres:5432/qa_system?sslmode=disable

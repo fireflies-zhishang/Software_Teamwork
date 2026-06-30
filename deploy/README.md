@@ -48,6 +48,7 @@ docker pull minio/minio:RELEASE.2025-09-07T16-13-09Z
 docker pull minio/mc:RELEASE.2025-08-13T08-35-41Z
 docker pull golang:1.25-alpine
 docker pull alpine:3.22
+docker pull python:3.12-slim
 ```
 
 Then build service images:
@@ -57,6 +58,45 @@ cd deploy
 docker compose build
 docker compose --profile ai build
 ```
+
+Docker build priority for this repository is: builds must run first, then be
+fast, then produce small images, then reduce memory use, then reduce storage
+use. For that reason the default Go Docker build args keep checksum verification
+on and use the Go toolchain's official proxy/sumdb defaults:
+
+```text
+GO_DOCKER_GOPROXY=https://proxy.golang.org,direct
+GO_DOCKER_GOSUMDB=sum.golang.org
+```
+
+For mainland China networks, use an explicit override instead of changing the
+repository default:
+
+```powershell
+$env:GO_DOCKER_GOPROXY = "https://goproxy.cn,direct"
+$env:GO_DOCKER_GOSUMDB = "sum.golang.google.cn"
+docker compose build migrate-file
+```
+
+Do not set `GOSUMDB=off` for normal builds. `goproxy.cn` may proxy
+`sum.golang.org` checksum requests; if that mirror path returns bad 404s, goose
+or service module verification can fail during migration image builds. Pairing a
+module proxy with `sum.golang.google.cn` keeps checksum verification enabled
+while avoiding that third-party sumdb proxy path.
+
+Optional build args for local acceleration:
+
+| Variable | Use |
+| --- | --- |
+| `DOCKER_IMAGE_REGISTRY_PREFIX` | Prefix `FROM` images with a local/enterprise registry mirror. Include the trailing slash. |
+| `POSTGRES_IMAGE` / `REDIS_IMAGE` / `QDRANT_IMAGE` / `MINIO_IMAGE` / `MINIO_MC_IMAGE` | Override Compose infrastructure images while keeping pinned defaults. |
+| `GO_DOCKER_GOPROXY` / `GO_DOCKER_GOSUMDB` | Override Go module proxy and checksum database for Go service and migration builds. |
+| `ALPINE_MIRROR` | Override Alpine apk repositories, for example a university mirror ending in `/alpine`. |
+| `DEBIAN_APT_MIRROR` / `DEBIAN_SECURITY_APT_MIRROR` | Override Parser Debian apt repositories. |
+| `PIP_INDEX_URL` / `UV_DEFAULT_INDEX` / `UV_INDEX` | Override Parser Python package indexes. |
+
+Detailed setup, mirror diagnostics, and storage cleanup are documented in
+[`docs/runbooks/docker-build-environment.md`](../docs/runbooks/docker-build-environment.md).
 
 The local Qdrant, MinIO server, MinIO `mc`, Redis, PostgreSQL, and Alpine
 runtime images are pinned to explicit tags in this repository. MinIO uses one

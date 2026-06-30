@@ -220,6 +220,7 @@ jobs:
 
       - name: Build Dockerfile
         env:
+          DOCKER_BUILDKIT: '1'
           DOCKERFILE: ${{ matrix.dockerfile }}
         run: |
           dockerfile="$DOCKERFILE"
