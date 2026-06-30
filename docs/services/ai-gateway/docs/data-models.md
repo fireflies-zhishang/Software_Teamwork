@@ -24,7 +24,7 @@ AI Gateway 数据库不得保存领域服务业务状态，包括但不限于：
 - Knowledge 文档、chunk、embedding 向量、Qdrant point、检索结果和 rerank 业务过滤结果。
 - Document 报告、模板、素材、大纲、章节、报告任务和生成文件。
 - 用户、角色、权限源数据和前端会话缓存。
-- 完整 prompt、完整生成答案、完整 embedding 数组、用户上传文档全文、MCP 原始参数/结果或 provider 原始响应体。
+- 完整 prompt、完整生成答案、完整 embedding payload、用户上传文档全文、MCP 原始参数/结果或 provider 原始响应体。
 
 ### 2.2 Secret 存储
 
@@ -300,7 +300,7 @@ Provider 凭据记录。该表只保存 secret 引用或加密密文元数据，
 禁止保存：
 
 - `messages` 原文。
-- `input` 原文或 embedding 数组。
+- `input` 原文或 embedding payload。
 - rerank `documents[].text` 原文。
 - 完整 provider response body。
 - tool call arguments 完整值。
@@ -397,7 +397,7 @@ AI Gateway 不读取历史会话，不保存多轮上下文。调用方必须传
 | `dimensions` | 可保存为 `embedding_dimensions`。 |
 | `encoding_format` | 可保存为低敏参数摘要。 |
 
-Embedding response 中的 `embedding` 数组不得保存到 AI Gateway 数据库或日志。向量持久化只归 `knowledge` 或向量数据库所有。
+Embedding response 中的 `embedding` 在 `encoding_format=float` 时是 float array，在 `encoding_format=base64` 时是 base64 string；完整 embedding payload 不得保存到 AI Gateway 数据库或日志。向量持久化只归 `knowledge` 或向量数据库所有。
 
 ### 8.3 RerankingRequest
 
@@ -508,7 +508,7 @@ running -> cancelled
 - 数据库、日志、错误响应和 metrics 不得保存或输出 API key 明文。
 - 数据库连接串、内部服务 token、secret ref、加密密钥引用和 provider bearer token 与 API key 同级处理，不得出现在日志、响应、审计快照或指标标签中。
 - Provider base URL 入库前必须校验并拒绝含敏感 query 参数的 URL。
-- 调用日志不得保存完整 prompt、完整 generated answer、完整 embedding 数组、用户上传文档全文、MCP 原始参数或 provider 原始响应体。
+- 调用日志不得保存完整 prompt、完整 generated answer、完整 embedding payload、用户上传文档全文、MCP 原始参数或 provider 原始响应体。
 - `default_parameters_json` 不得包含密钥、token、内部 URL、prompt 模板或文档内容。
 - `metadata` 字段必须进行字段名黑名单和长度限制校验。
 - 错误摘要只能保存稳定错误码和脱敏 message，不保存 provider 原始 body。

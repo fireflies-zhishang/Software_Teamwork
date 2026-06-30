@@ -436,7 +436,7 @@ data: [DONE]
 }
 ```
 
-调用方日志和错误响应不得输出完整 embedding 数组；向量 payload 可能包含原文语义信息，按敏感数据处理。
+`embedding` 字段在 `encoding_format=float` 时是 float array，在 `encoding_format=base64` 时是 base64 string。调用方日志和错误响应不得输出完整 embedding payload；向量 payload 可能包含原文语义信息，按敏感数据处理。
 
 ## Rerankings
 
@@ -541,7 +541,7 @@ AI Gateway 的环境变量应按结构化配置分组，服务启动时一次性
 - 配置写接口必须要求内部服务认证，后续还需叠加管理员权限或配置服务授权。
 - `apiKey` 是 write-only 字段；任何响应中都只能返回 `apiKeyConfigured`。
 - 内部服务 token 按 opaque token 处理；服务侧只保存和比对 token hash，不记录原始 token。
-- 日志不得记录 API key、bearer token、数据库连接串、secret ref、加密密钥引用、完整 prompt、完整 generated answer、完整 embedding 数组、原始 provider 响应体或用户上传文档全文。
+- 日志不得记录 API key、bearer token、数据库连接串、secret ref、加密密钥引用、完整 prompt、完整 generated answer、完整 embedding payload、原始 provider 响应体或用户上传文档全文。
 - Provider 调用日志建议记录：`service=ai-gateway`、`request_id`、`caller_service`、`operation`、`profile_id`、`provider`、`model`、`status`、`duration_ms`。
 - Metrics label 只能使用低基数字段，例如 `operation`、`provider`、`model_purpose`、`status` 和归一化错误码；不得使用用户输入、prompt hash、object key、API key 指纹、完整 model name 或完整 base URL。
 - 对外错误消息保持稳定简短，详细 provider 失败信息只进入脱敏日志。
