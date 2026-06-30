@@ -170,6 +170,7 @@ func TestOwnerAuthorizationBoundaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	run, err := repo.AppendMessages(ctx, ownerID, conversationID,
+		service.ResponseRunStart{RequestID: "req-authorization", MaxIterations: 5},
 		service.Message{ID: userMessageID, ConversationID: conversationID, Role: "user", Content: "private question", Status: "completed", CreatedAt: now},
 		service.Message{ID: assistantMessageID, ConversationID: conversationID, Role: "assistant", Content: "private answer", Status: "generating", CreatedAt: now},
 	)
