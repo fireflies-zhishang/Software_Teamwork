@@ -10,6 +10,7 @@ import (
 
 const (
 	DefaultHTTPAddr          = ":8080"
+	DefaultMetricsAddr       = ":9091"
 	DefaultServiceVersion    = "0.1.0"
 	DefaultEnvironment       = "local"
 	DefaultMaxBodyBytes      = int64(10 << 20)
@@ -23,6 +24,7 @@ const (
 
 type Config struct {
 	HTTPAddr             string
+	MetricsAddr          string
 	ServiceVersion       string
 	Environment          string
 	MaxBodyBytes         int64
@@ -49,6 +51,7 @@ type Config struct {
 func Load() (Config, error) {
 	cfg := Config{
 		HTTPAddr:             stringValue("GATEWAY_HTTP_ADDR", DefaultHTTPAddr),
+		MetricsAddr:          stringValue("GATEWAY_METRICS_ADDR", DefaultMetricsAddr),
 		ServiceVersion:       stringValue("GATEWAY_SERVICE_VERSION", DefaultServiceVersion),
 		Environment:          stringValue("GATEWAY_ENV", DefaultEnvironment),
 		MaxBodyBytes:         DefaultMaxBodyBytes,

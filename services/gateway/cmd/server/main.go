@@ -14,6 +14,7 @@ import (
 
 	"github.com/Sakayori-Iroha-168/Software_Teamwork/services/gateway/internal/config"
 	gatewayhttp "github.com/Sakayori-Iroha-168/Software_Teamwork/services/gateway/internal/http"
+	"github.com/Sakayori-Iroha-168/Software_Teamwork/services/gateway/internal/metrics"
 	"github.com/Sakayori-Iroha-168/Software_Teamwork/services/gateway/internal/platform/authclient"
 	redisstore "github.com/Sakayori-Iroha-168/Software_Teamwork/services/gateway/internal/platform/redis"
 	"github.com/Sakayori-Iroha-168/Software_Teamwork/services/gateway/internal/service"
@@ -51,6 +52,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	metricsReg := metrics.New()
+
 	ownerBaseURLs := map[string]string{
 		"auth":       cfg.AuthBaseURL,
 		"knowledge":  cfg.KnowledgeBaseURL,
@@ -76,6 +79,7 @@ func main() {
 		TokenHasher:          tokenHasher,
 		OwnerBaseURLs:        ownerBaseURLs,
 		ReadyCheck:           gatewayReadyCheck(sessionStore, authClient, ownerBaseURLs),
+		MetricsReg:           metricsReg,
 	})
 
 	server := &http.Server{
@@ -84,8 +88,22 @@ func main() {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
+	metricsServer := &http.Server{
+		Addr:              cfg.MetricsAddr,
+		Handler:           metricsReg.Handler(),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	go func() {
+		logger.Info("gateway metrics server starting", "service", "gateway", "addr", cfg.MetricsAddr)
+		if err := metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("gateway metrics server stopped unexpectedly", "service", "gateway", "error", err)
+			stop()
+		}
+	}()
 
 	go func() {
 		logger.Info("gateway service starting",
@@ -104,6 +122,7 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
 	logger.Info("gateway service shutdown started", "service", "gateway")
+	_ = metricsServer.Shutdown(shutdownCtx)
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		logger.Error("gateway service shutdown failed", "service", "gateway", "error", err)
 		os.Exit(1)

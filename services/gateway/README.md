@@ -53,6 +53,7 @@ Both endpoints return the project success envelope and include `X-Request-Id`:
 | Variable | Default | Description |
 | --- | --- | --- |
 | `GATEWAY_HTTP_ADDR` | `:8080` | HTTP listen address. |
+| `GATEWAY_METRICS_ADDR` | `:9091` | Internal Prometheus metrics listen address. Not exposed via the public gateway port. |
 | `GATEWAY_SERVICE_VERSION` | `0.1.0` | Version reported by health checks and startup logs. |
 | `GATEWAY_ENV` | `local` | Runtime environment label. |
 | `GATEWAY_MAX_BODY_BYTES` | `10485760` | Maximum request body size enforced at the gateway edge. |
@@ -74,6 +75,24 @@ Both endpoints return the project success envelope and include `X-Request-Id`:
 | `GATEWAY_QA_BASE_URL` | unset | QA service base URL for QA-owned active routes. |
 | `GATEWAY_DOCUMENT_BASE_URL` | unset | Document service base URL for document-owned active routes. |
 | `GATEWAY_AI_GATEWAY_BASE_URL` | unset | AI Gateway base URL for admin model-profile routes. |
+
+## Metrics
+
+The gateway exposes Prometheus metrics on a separate internal port (default `:9091`)
+so that `/metrics` is never reachable through the public gateway port.
+
+Metrics exposed:
+
+| Metric | Type | Labels | Description |
+| --- | --- | --- | --- |
+| `gateway_http_requests_total` | Counter | `method`, `path`, `status` | Total HTTP requests handled by the gateway. `path` is the matched route pattern (e.g. `GET /api/v1/sessions`), never the raw URL. |
+| `gateway_http_request_duration_seconds` | Histogram | `method`, `path`, `status` | Request duration in seconds. |
+
+Verify locally after starting the server:
+
+```bash
+curl -s http://localhost:9091/metrics | grep gateway_http
+```
 
 ## Tests
 
