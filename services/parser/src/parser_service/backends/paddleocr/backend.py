@@ -32,6 +32,7 @@ class PaddleOCRBackend:
         use_doc_orientation_classify: bool = False,
         use_doc_unwarping: bool = False,
         use_textline_orientation: bool = False,
+        enable_mkldnn: bool = False,
     ) -> None:
         self._lang = lang.strip() or "ch"
         self._device = device.strip()
@@ -40,6 +41,7 @@ class PaddleOCRBackend:
         self._use_doc_orientation_classify = use_doc_orientation_classify
         self._use_doc_unwarping = use_doc_unwarping
         self._use_textline_orientation = use_textline_orientation
+        self._enable_mkldnn = enable_mkldnn
         self._pipeline: Any | None = None
         self._load_error: str = ""
         self._lock = threading.Lock()
@@ -104,6 +106,7 @@ class PaddleOCRBackend:
                     "use_doc_orientation_classify": self._use_doc_orientation_classify,
                     "use_doc_unwarping": self._use_doc_unwarping,
                     "use_textline_orientation": self._use_textline_orientation,
+                    "enable_mkldnn": self._enable_mkldnn,
                 }
                 if self._device:
                     kwargs["device"] = self._device

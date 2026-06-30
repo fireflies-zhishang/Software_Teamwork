@@ -68,7 +68,7 @@ class DisabledOCRBackend:
     def parse(self, request: ParseRequest) -> ParsedDocument:
         raise validation_error(
             "document format requires OCR backend",
-            {"file": "pdf and image parsing require PARSER_BACKEND=paddleocr"},
+            {"file": "pdf and image parsing require PARSER_BACKEND=ppstructurev3"},
         )
 
 

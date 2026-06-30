@@ -32,7 +32,17 @@ class FakeBackend:
             content=self.content,
             title=" Remote Title ",
             backend=self.name,
-            pages=[ParsedPage(page_number=1, content=" page one ")],
+            pages=[
+                ParsedPage(
+                    page_number=1,
+                    content=" page one ",
+                    parse_strategy="ocr",
+                    text_layer_status="broken",
+                    ocr_confidence=0.91,
+                    dpi=180,
+                    warnings=["low_text_quality"],
+                )
+            ],
         )
 
 
@@ -115,7 +125,17 @@ def test_create_parsed_document_returns_standard_envelope():
             "content": "line one\nline two",
             "title": "Remote Title",
             "backend": "fake",
-            "pages": [{"pageNumber": 1, "content": "page one"}],
+            "pages": [
+                {
+                    "pageNumber": 1,
+                    "content": "page one",
+                    "parseStrategy": "ocr",
+                    "textLayerStatus": "broken",
+                    "ocrConfidence": 0.91,
+                    "dpi": 180,
+                    "warnings": ["low_text_quality"],
+                }
+            ],
         },
         "requestId": "req_123",
     }
@@ -192,9 +212,91 @@ def test_document_backend_mode_rejects_ocr_formats_without_loading_paddleocr():
             "code": "validation_error",
             "message": "document format requires OCR backend",
             "requestId": "req_123",
-            "fields": {"file": "pdf and image parsing require PARSER_BACKEND=paddleocr"},
+            "fields": {"file": "pdf and image parsing require PARSER_BACKEND=ppstructurev3"},
         }
     }
+
+
+def test_default_backend_uses_ppstructurev3():
+    service = build_parser_service(Settings())
+
+    assert service.backend_name == "ppstructurev3"
+
+
+def test_ppstructurev3_startup_warmup_runs_when_enabled(monkeypatch):
+    warmed = False
+
+    class WarmupBackend:
+        name = "ppstructurev3"
+
+        def __init__(self, **kwargs):
+            pass
+
+        def health(self):
+            return BackendHealth(ready=True, status="ready")
+
+        def warm_up(self):
+            nonlocal warmed
+            warmed = True
+
+        def parse(self, request):
+            raise NotImplementedError
+
+    monkeypatch.setattr("parser_service.http.app.PPStructureV3Backend", WarmupBackend)
+
+    service = build_parser_service(Settings(load_backend_on_startup=True))
+
+    assert service.backend_name == "ppstructurev3"
+    assert warmed is True
+
+
+def test_ppstructurev3_backend_accepts_official_tuning_settings():
+    service = build_parser_service(
+        Settings(
+            ppstructurev3_layout_detection_model_name="PP-DocLayout-S",
+            ppstructurev3_text_detection_model_name="PP-OCRv5_mobile_det",
+            ppstructurev3_text_recognition_model_name="PP-OCRv5_mobile_rec",
+            ppstructurev3_text_det_limit_side_len=768,
+            ppstructurev3_text_det_limit_type="max",
+            ppstructurev3_text_recognition_batch_size=1,
+            ppstructurev3_markdown_ignore_labels=["header", "footer"],
+            paddleocr_engine="paddle",
+            default_dpi=180,
+            retry_dpi=220,
+            max_retry_dpi=300,
+            low_confidence_threshold=0.8,
+            page_batch_size=1,
+            subprocess_isolation=True,
+            memory_limit_mb=14500,
+        )
+    )
+
+    ocr_backend = service._backend._ocr_backend
+    kwargs = ocr_backend._pipeline_kwargs()
+
+    assert kwargs["layout_detection_model_name"] == "PP-DocLayout-S"
+    assert kwargs["text_detection_model_name"] == "PP-OCRv5_mobile_det"
+    assert kwargs["text_recognition_model_name"] == "PP-OCRv5_mobile_rec"
+    assert kwargs["text_det_limit_side_len"] == 768
+    assert kwargs["text_det_limit_type"] == "max"
+    assert kwargs["text_recognition_batch_size"] == 1
+    assert kwargs["markdown_ignore_labels"] == ["header", "footer"]
+    assert "engine" not in kwargs
+    assert kwargs["use_doc_orientation_classify"] is True
+    assert kwargs["use_doc_unwarping"] is True
+    assert kwargs["use_textline_orientation"] is True
+    assert kwargs["use_seal_recognition"] is True
+    assert kwargs["use_table_recognition"] is True
+    assert kwargs["use_formula_recognition"] is True
+    assert kwargs["use_chart_recognition"] is True
+    assert kwargs["use_region_detection"] is True
+    assert ocr_backend._default_dpi == 180
+    assert ocr_backend._retry_dpi == 220
+    assert ocr_backend._max_retry_dpi == 300
+    assert ocr_backend._low_confidence_threshold == 0.8
+    assert ocr_backend._page_batch_size == 1
+    assert ocr_backend._subprocess_isolation is True
+    assert ocr_backend._memory_limit_mb == 14500
 
 
 def _client(

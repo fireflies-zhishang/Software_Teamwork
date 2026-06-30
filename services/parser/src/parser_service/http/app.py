@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 
 from parser_service.backends.document import DisabledOCRBackend, DocumentParserBackend
 from parser_service.backends.paddleocr import PaddleOCRBackend
+from parser_service.backends.ppstructurev3 import PPStructureV3Backend
 from parser_service.config import Settings
 from parser_service.http.schemas import CreateParsedDocumentRequest
 from parser_service.service import AppError, ParsedDocument, ParserService
@@ -127,10 +128,51 @@ def build_parser_service(settings: Settings) -> ParserService:
             use_doc_orientation_classify=settings.paddleocr_use_doc_orientation_classify,
             use_doc_unwarping=settings.paddleocr_use_doc_unwarping,
             use_textline_orientation=settings.paddleocr_use_textline_orientation,
+            enable_mkldnn=settings.paddleocr_enable_mkldnn,
         )
         backend = DocumentParserBackend(ocr_backend=ocr_backend, name="paddleocr")
+    elif backend_name == "ppstructurev3":
+        structure_backend = PPStructureV3Backend(
+            lang=settings.paddleocr_lang,
+            device=settings.paddleocr_device,
+            engine="",
+            paddlex_config=settings.paddleocr_config_path,
+            use_doc_orientation_classify=settings.paddleocr_use_doc_orientation_classify,
+            use_doc_unwarping=settings.paddleocr_use_doc_unwarping,
+            use_textline_orientation=settings.paddleocr_use_textline_orientation,
+            use_seal_recognition=settings.ppstructurev3_use_seal_recognition,
+            use_table_recognition=settings.ppstructurev3_use_table_recognition,
+            use_formula_recognition=settings.ppstructurev3_use_formula_recognition,
+            use_chart_recognition=settings.ppstructurev3_use_chart_recognition,
+            use_region_detection=settings.ppstructurev3_use_region_detection,
+            format_block_content=settings.ppstructurev3_format_block_content,
+            enable_mkldnn=settings.paddleocr_enable_mkldnn,
+            layout_detection_model_name=settings.ppstructurev3_layout_detection_model_name,
+            text_detection_model_name=settings.ppstructurev3_text_detection_model_name,
+            text_recognition_model_name=settings.ppstructurev3_text_recognition_model_name,
+            text_det_limit_side_len=settings.ppstructurev3_text_det_limit_side_len,
+            text_det_limit_type=settings.ppstructurev3_text_det_limit_type,
+            text_recognition_batch_size=settings.ppstructurev3_text_recognition_batch_size,
+            textline_orientation_batch_size=settings.ppstructurev3_textline_orientation_batch_size,
+            seal_text_recognition_batch_size=(
+                settings.ppstructurev3_seal_text_recognition_batch_size
+            ),
+            formula_recognition_batch_size=settings.ppstructurev3_formula_recognition_batch_size,
+            chart_recognition_batch_size=settings.ppstructurev3_chart_recognition_batch_size,
+            markdown_ignore_labels=settings.ppstructurev3_markdown_ignore_labels,
+            profile=settings.profile,
+            default_dpi=settings.default_dpi,
+            retry_dpi=settings.retry_dpi,
+            max_retry_dpi=settings.max_retry_dpi,
+            low_confidence_threshold=settings.low_confidence_threshold,
+            page_batch_size=settings.page_batch_size,
+            subprocess_isolation=settings.subprocess_isolation,
+            subprocess_timeout_seconds=max(0.1, settings.parse_timeout_seconds - 1.0),
+            memory_limit_mb=settings.memory_limit_mb,
+        )
+        backend = DocumentParserBackend(ocr_backend=structure_backend, name="ppstructurev3")
     else:
-        raise ValueError("PARSER_BACKEND must be document or paddleocr")
+        raise ValueError("PARSER_BACKEND must be document, paddleocr, or ppstructurev3")
     service = ParserService(
         backend=backend,
         max_document_bytes=settings.max_document_bytes,
@@ -196,11 +238,22 @@ def _parsed_document_data(parsed: ParsedDocument) -> dict[str, object]:
         "backend": parsed.backend,
     }
     if parsed.pages:
-        data["pages"] = [
-            {
+        pages: list[dict[str, object]] = []
+        for page in parsed.pages:
+            page_data: dict[str, object] = {
                 "pageNumber": page.page_number,
                 "content": page.content,
             }
-            for page in parsed.pages
-        ]
+            if page.parse_strategy:
+                page_data["parseStrategy"] = page.parse_strategy
+            if page.text_layer_status:
+                page_data["textLayerStatus"] = page.text_layer_status
+            if page.ocr_confidence is not None:
+                page_data["ocrConfidence"] = page.ocr_confidence
+            if page.dpi is not None:
+                page_data["dpi"] = page.dpi
+            if page.warnings:
+                page_data["warnings"] = page.warnings
+            pages.append(page_data)
+        data["pages"] = pages
     return data

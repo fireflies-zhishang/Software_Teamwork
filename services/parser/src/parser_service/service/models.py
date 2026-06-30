@@ -15,6 +15,11 @@ class ParseRequest:
 class ParsedPage:
     page_number: int
     content: str
+    parse_strategy: str = ""
+    text_layer_status: str = ""
+    ocr_confidence: float | None = None
+    dpi: int | None = None
+    warnings: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

@@ -8,7 +8,7 @@
 
 - `knowledge`：知识库、文档上传公开资源、文档业务元数据、解析/切片/向量化任务、Qdrant 索引、检索协调和原始文档内容入口。
 - `file`：后端内部基础文件对象存储和内容读取能力，由 `knowledge` 在服务边界内复用。
-- `parser`：后端内部文档解析运行时，把 raw bytes 转成规范化 parsed content；首期目标为 Python/PaddleOCR，不拥有业务状态。
+- `parser`：后端内部文档解析运行时，把 raw bytes 转成规范化 parsed content；默认目标为 Python/PaddleOCR PP-StructureV3，不拥有业务状态。
 - `auth`：用户、角色、权限和认证上下文。
 - `gateway`：外部 API 入口。
 - `ai-gateway`：统一提供 OpenAI-compatible 模型调用入口，供 embedding、rerank 和后续 LLM 能力使用。

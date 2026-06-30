@@ -174,7 +174,17 @@ class ParserService:
         for page in parsed.pages:
             page_content = _normalize_text(page.content)
             if page.page_number > 0 and page_content:
-                pages.append(ParsedPage(page_number=page.page_number, content=page_content))
+                pages.append(
+                    ParsedPage(
+                        page_number=page.page_number,
+                        content=page_content,
+                        parse_strategy=page.parse_strategy.strip(),
+                        text_layer_status=page.text_layer_status.strip(),
+                        ocr_confidence=_normalize_confidence(page.ocr_confidence),
+                        dpi=page.dpi if page.dpi and page.dpi > 0 else None,
+                        warnings=_normalize_warnings(page.warnings),
+                    )
+                )
 
         return ParsedDocument(
             content=content,
@@ -192,3 +202,22 @@ def _normalize_text(value: str) -> str:
 
 def _normalize_line(value: str) -> str:
     return " ".join(value.strip().split())
+
+
+def _normalize_confidence(value: float | None) -> float | None:
+    if value is None:
+        return None
+    if value < 0:
+        return 0.0
+    if value > 1:
+        return 1.0
+    return value
+
+
+def _normalize_warnings(values: list[str]) -> list[str]:
+    warnings: list[str] = []
+    for value in values:
+        normalized = _normalize_line(value)
+        if normalized:
+            warnings.append(normalized)
+    return warnings

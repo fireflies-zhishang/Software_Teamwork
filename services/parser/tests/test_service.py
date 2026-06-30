@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from parser_service.service import BackendHealth, ParsedDocument, ParserService
+from parser_service.service import BackendHealth, ParsedDocument, ParsedPage, ParserService
 from parser_service.service.errors import AppError
 
 
@@ -35,6 +35,37 @@ class SlowOnceBackend(EchoBackend):
         return ParsedDocument(content="done", backend=self.name)
 
 
+class EmptyBackend(EchoBackend):
+    def parse(self, request):
+        return ParsedDocument(content="   \n ", backend=self.name)
+
+
+class MetadataBackend(EchoBackend):
+    def parse(self, request):
+        return ParsedDocument(
+            content=" parsed content ",
+            backend=self.name,
+            pages=[
+                ParsedPage(
+                    page_number=1,
+                    content=" page one ",
+                    parse_strategy=" ocr ",
+                    text_layer_status=" broken ",
+                    ocr_confidence=1.2,
+                    dpi=180,
+                    warnings=[" low_text_quality ", ""],
+                ),
+                ParsedPage(
+                    page_number=2,
+                    content="empty dpi",
+                    ocr_confidence=-0.5,
+                    dpi=0,
+                ),
+                ParsedPage(page_number=0, content="ignored"),
+            ],
+        )
+
+
 def test_parse_document_decodes_base64_and_normalizes_text():
     service = ParserService(backend=EchoBackend(), max_document_bytes=128)
 
@@ -49,6 +80,54 @@ def test_parse_document_decodes_base64_and_normalizes_text():
 
     assert parsed.content == "hello\nworld"
     assert parsed.backend == "echo"
+
+
+def test_parse_document_rejects_empty_parsed_content():
+    service = ParserService(backend=EmptyBackend(), max_document_bytes=128)
+
+    with pytest.raises(AppError) as raised:
+        asyncio.run(
+            service.parse_document(
+                document_name="empty.pdf",
+                content_type="application/pdf",
+                size_bytes=5,
+                data_base64=_b64(b"empty"),
+            )
+        )
+
+    assert raised.value.status_code == 400
+    assert raised.value.code == "validation_error"
+    assert raised.value.fields == {"file": "no text content"}
+
+
+def test_parse_document_normalizes_page_metadata():
+    service = ParserService(backend=MetadataBackend(), max_document_bytes=128)
+
+    parsed = asyncio.run(
+        service.parse_document(
+            document_name="scan.pdf",
+            content_type="application/pdf",
+            size_bytes=5,
+            data_base64=_b64(b"hello"),
+        )
+    )
+
+    assert parsed.content == "parsed content"
+    assert len(parsed.pages) == 2
+    assert parsed.pages[0] == ParsedPage(
+        page_number=1,
+        content="page one",
+        parse_strategy="ocr",
+        text_layer_status="broken",
+        ocr_confidence=1.0,
+        dpi=180,
+        warnings=["low_text_quality"],
+    )
+    assert parsed.pages[1] == ParsedPage(
+        page_number=2,
+        content="empty dpi",
+        ocr_confidence=0.0,
+    )
 
 
 def test_parse_document_rejects_invalid_base64():

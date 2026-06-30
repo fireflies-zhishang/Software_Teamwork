@@ -6,8 +6,8 @@ info:
     Internal document parser runtime API. Knowledge owns ingestion state,
     chunking, embedding, Qdrant indexing, retrieval, and public parser
     configuration. Parser only converts raw document bytes into normalized
-    parsed content. The target runtime is Python/PaddleOCR, hidden behind this
-    HTTP contract.
+    parsed content. The target runtime is Python/PaddleOCR PP-StructureV3,
+    hidden behind this HTTP contract.
 x-api-scope: internal-service
 servers:
   - url: /
@@ -142,7 +142,7 @@ components:
               example: ready
             backend:
               type: string
-              example: paddleocr
+              example: ppstructurev3
             reason:
               type: string
         requestId:
@@ -172,7 +172,7 @@ components:
           properties:
             backend:
               type: string
-              description: Optional backend hint, for example paddleocr.
+              description: Optional backend hint, for example ppstructurev3.
             languageHints:
               type: array
               items:
@@ -198,14 +198,11 @@ components:
           type: string
     ParsedDocument:
       type: object
-      required: [content, backend, contentLength]
+      required: [content, backend]
       properties:
         content:
           type: string
           description: Normalized text used by Knowledge chunking.
-        contentLength:
-          type: integer
-          minimum: 0
         title:
           type: string
           nullable: true
@@ -231,6 +228,28 @@ components:
           minimum: 1
         content:
           type: string
+        parseStrategy:
+          type: string
+          description: Parser strategy used for this page, for example ocr.
+        textLayerStatus:
+          type: string
+          description: Parser assessment of the original PDF text layer, for example empty, broken, or usable.
+        ocrConfidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          nullable: true
+          description: Best-effort OCR confidence aggregated from available PP-StructureV3 fields.
+        dpi:
+          type: integer
+          minimum: 1
+          nullable: true
+          description: Render DPI used for this page when input was a PDF.
+        warnings:
+          type: array
+          items:
+            type: string
+          description: Page-level parser quality warnings such as low_ocr_confidence.
         blocks:
           type: array
           items:

@@ -271,6 +271,17 @@ type ParsedDocument struct {
 	Content string
 	Title   string
 	Backend string
+	Pages   []ParsedPage
+}
+
+type ParsedPage struct {
+	PageNumber      int
+	Content         string
+	ParseStrategy   string
+	TextLayerStatus string
+	OCRConfidence   *float64
+	DPI             *int
+	Warnings        []string
 }
 
 type Parser interface {

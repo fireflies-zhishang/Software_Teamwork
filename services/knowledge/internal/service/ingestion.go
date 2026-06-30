@@ -194,6 +194,8 @@ func (s *Service) ProcessIngestionTask(ctx context.Context, reqCtx RequestContex
 	for index, spec := range chunkSpecs {
 		chunkID := s.newID("chunk")
 		tokenCount := int32(spec.TokenCount)
+		metadata := cloneMetadata(spec.Metadata)
+		addParsedPageMetadata(metadata, spec.Content, parsed.Pages)
 		chunks = append(chunks, DocumentChunk{
 			ID:              chunkID,
 			KnowledgeBaseID: doc.KnowledgeBaseID,
@@ -203,7 +205,7 @@ func (s *Service) ProcessIngestionTask(ctx context.Context, reqCtx RequestContex
 			Content:         spec.Content,
 			TokenCount:      &tokenCount,
 			ChunkType:       spec.ChunkType,
-			Metadata:        cloneMetadata(spec.Metadata),
+			Metadata:        metadata,
 			CreatedAt:       s.now(),
 		})
 	}
@@ -495,6 +497,57 @@ func cloneMetadata(metadata map[string]any) map[string]any {
 		out[key] = value
 	}
 	return out
+}
+
+func addParsedPageMetadata(metadata map[string]any, chunkContent string, pages []ParsedPage) {
+	if metadata == nil || len(pages) == 0 {
+		return
+	}
+	pageNumber := 0
+	if len(pages) == 1 {
+		pageNumber = pages[0].PageNumber
+	} else {
+		chunkText := strings.TrimSpace(chunkContent)
+		if chunkText == "" {
+			return
+		}
+		for _, page := range pages {
+			if page.PageNumber <= 0 {
+				continue
+			}
+			if strings.Contains(page.Content, chunkText) {
+				pageNumber = page.PageNumber
+				break
+			}
+		}
+	}
+	if pageNumber <= 0 {
+		return
+	}
+	metadata["page_start"] = pageNumber
+	metadata["page_end"] = pageNumber
+	metadata["source_pages"] = []int{pageNumber}
+	for _, page := range pages {
+		if page.PageNumber != pageNumber {
+			continue
+		}
+		if strings.TrimSpace(page.ParseStrategy) != "" {
+			metadata["parse_strategy"] = strings.TrimSpace(page.ParseStrategy)
+		}
+		if strings.TrimSpace(page.TextLayerStatus) != "" {
+			metadata["text_layer_status"] = strings.TrimSpace(page.TextLayerStatus)
+		}
+		if page.OCRConfidence != nil {
+			metadata["ocr_confidence"] = *page.OCRConfidence
+		}
+		if page.DPI != nil {
+			metadata["dpi"] = *page.DPI
+		}
+		if len(page.Warnings) > 0 {
+			metadata["parse_warnings"] = append([]string(nil), page.Warnings...)
+		}
+		return
+	}
 }
 
 func derefString(value *string) string {

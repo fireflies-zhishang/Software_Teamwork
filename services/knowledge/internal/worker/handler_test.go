@@ -82,8 +82,27 @@ func TestIngestionHandlerProcessesA10PayloadFromFileServiceToReady(t *testing.T)
 	if chunks.Page.Total != 1 || chunks.Items[0].QdrantPointID == nil {
 		t.Fatalf("chunks = %+v", chunks)
 	}
+	if chunks.Items[0].Metadata["page_start"] != 1 || chunks.Items[0].Metadata["page_end"] != 1 {
+		t.Fatalf("chunk page metadata = %+v", chunks.Items[0].Metadata)
+	}
+	sourcePages, ok := chunks.Items[0].Metadata["source_pages"].([]int)
+	if !ok || len(sourcePages) != 1 || sourcePages[0] != 1 {
+		t.Fatalf("chunk source pages metadata = %+v", chunks.Items[0].Metadata["source_pages"])
+	}
 	if len(vectors.points) != 1 {
 		t.Fatalf("vector points = %+v", vectors.points)
+	}
+	if chunks.Items[0].Metadata["parse_strategy"] != "ocr" ||
+		chunks.Items[0].Metadata["text_layer_status"] != "broken" ||
+		chunks.Items[0].Metadata["dpi"] != 180 {
+		t.Fatalf("chunk parser metadata = %+v", chunks.Items[0].Metadata)
+	}
+	if confidence, ok := chunks.Items[0].Metadata["ocr_confidence"].(float64); !ok || confidence != 0.91 {
+		t.Fatalf("chunk confidence metadata = %+v", chunks.Items[0].Metadata["ocr_confidence"])
+	}
+	warnings, ok := chunks.Items[0].Metadata["parse_warnings"].([]string)
+	if !ok || len(warnings) != 1 || warnings[0] != "low_text_quality" {
+		t.Fatalf("chunk warnings metadata = %+v", chunks.Items[0].Metadata["parse_warnings"])
 	}
 	assertMinimalVectorPayload(t, vectors.points[0].Payload)
 }
@@ -542,6 +561,17 @@ func (p fakeParser) Parse(ctx context.Context, input service.ParseInput) (servic
 		Content: "Parsed document content from parser service",
 		Title:   "Parsed document",
 		Backend: "parser-service",
+		Pages: []service.ParsedPage{
+			{
+				PageNumber:      1,
+				Content:         "Parsed document content from parser service",
+				ParseStrategy:   "ocr",
+				TextLayerStatus: "broken",
+				OCRConfidence:   ptrFloat64(0.91),
+				DPI:             ptrInt(180),
+				Warnings:        []string{"low_text_quality"},
+			},
+		},
 	}, nil
 }
 
@@ -899,6 +929,14 @@ func fixedClock() func() time.Time {
 
 func actorContext() service.RequestContext {
 	return service.RequestContext{RequestID: "req_test", UserID: "usr_123"}
+}
+
+func ptrFloat64(value float64) *float64 {
+	return &value
+}
+
+func ptrInt(value int) *int {
+	return &value
 }
 
 func sequenceIDs() func(prefix string) string {
