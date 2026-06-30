@@ -29,6 +29,8 @@ RESTful 路径、统一响应和错误 envelope 以 [前后端集成契约](../.
 
 - 代码落地时使用独立 Go module，服务代码放在 `services/document/`。
 - 使用 `asynq` over Redis 执行大纲、正文、章节和 DOCX 创建任务；PostgreSQL 是任务业务状态权威。
+- 当前 `summer_peak_inspection` 固定报告类型已支持通过 AI Gateway chat 完成基础大纲生成和逐章节正文生成，成功结果写入大纲、章节和章节版本。
+- 生成请求可通过 `options.knowledgeBaseIds` 等检索参数在配置了 Knowledge 服务时获取受控材料上下文；`document` 不直接访问 Qdrant。
 - 当前基础 DOCX 导出由 Document worker 内置 Go `SimpleDOCXGenerator` 完成，并通过 `file` 服务保存底层 bytes；Pandoc/LibreOffice 仅作为后续富 DOCX worker 工具链，落地前不作为当前运行依赖。
 - 报告生成链路是后续 OpenTelemetry tracing 重点。
 
@@ -128,10 +130,10 @@ JSON 成功、分页和错误响应遵循 [前后端集成契约](../../architec
 
 ### 生成正文和重新生成
 
-1. 调用方创建 `content_generation` 或 `content_regeneration` report job。
-2. 目标实现中，`document` 逐章节生成正文，保存章节内容、结构化表格、引用快照和任务进度；当前 worker 仍未调用 AI Gateway 生成正文。
+1. 调用方通过 `POST /api/v1/reports/{reportId}/jobs` 创建 `content_generation` 或 `content_regeneration` 任务。
+2. 当前实现会由 worker 通过 AI Gateway chat 逐章节生成正文，保存章节内容、结构化表格、章节版本和任务进度；首个闭环固定报告类型为 `summer_peak_inspection`。
 3. 部分章节失败时，已成功章节不得丢失；任务可进入 `partial_succeeded` 或 `failed`，具体枚举以 OpenAPI 为准。
-4. 单章重新生成通过 section version 资源创建新章节版本。`preserveUserEdits` 默认应为 `true`，只有调用方显式传 `false` 才覆盖用户编辑内容。
+4. 单章重新生成通过 `POST /api/v1/reports/{reportId}/sections/{sectionId}/versions` 创建新章节版本。`preserveUserEdits` 默认应为 `true`，只有调用方显式传 `false` 才覆盖用户编辑内容。
 
 ### 创建报告文件
 
@@ -253,12 +255,12 @@ Document 相关接口使用项目统一错误码：
 ## 实现与验证要求
 
 - 服务代码放在 `services/document/`，使用独立 Go module；通用数据库、迁移、HTTP、配置、日志、测试和观测规则见 [技术选型基线](../../architecture/technology-decisions.md)。
-- 启动时必须校验 PostgreSQL、Redis、file client 配置和监听地址；AI Gateway profile 校验用于 settings/default generation，Pandoc/LibreOffice 路径当前只是富 DOCX 工具链预留配置。
+- 启动时必须校验 PostgreSQL、Redis、file client、AI Gateway 配置和监听地址；Knowledge 服务配置是可选项，仅在生成请求要求检索上下文时使用；Pandoc/LibreOffice 路径当前只是富 DOCX 工具链预留配置。
 - Gateway 只做公开入口、认证上下文、统一 envelope、错误归一化和路由转发，不承载报告生成业务逻辑。
 - Redis 只通过 `asynq` 承载任务队列和短期协调；PostgreSQL 中的 `ReportJob`、`ReportJobAttempt`、`ReportEvent` 是权威业务状态。
 - 任务最多自动重试 3 次，失败后保留最近尝试摘要；手动重试通过 `report-jobs/{jobId}/attempts` 创建新资源。
-- 当前 DOCX 创建由 worker 调用内置 `SimpleDOCXGenerator` 完成，生成后通过 file 服务保存底层对象；Pandoc/LibreOffice 类工具链落地后必须同步更新 Dockerfile、部署和技术基线。
+- 当前大纲/正文生成由 worker 通过 AI Gateway chat 完成，不保存 provider base URL/API key，不直连 provider；当前 DOCX 创建由 worker 调用内置 `SimpleDOCXGenerator` 完成，生成后通过 file 服务保存底层对象；Pandoc/LibreOffice 类工具链落地后必须同步更新 Dockerfile、部署和技术基线。
 - 服务日志和指标不得记录 prompt 全文、文档全文、file reference、object key、token、API key 或 provider 原始响应体。
 - 模板文件首期限定 DOCX；模板结构、默认章节和材料映射以数据库配置为权威，不从 DOCX 自动解析。
-- 首期大纲生成可使用模板模式；AI 生成能力进入公开语义前必须确保 OpenAPI、状态枚举和错误处理已同步。
+- 首期 AI 生成闭环覆盖 `summer_peak_inspection`；新增报告类型或更复杂的检索/流式事件前必须确保 OpenAPI、状态枚举和错误处理已同步。
 - 契约测试应覆盖 active document operations 的 response envelope、字段命名、错误码、request id、权限边界和文件内容接口。

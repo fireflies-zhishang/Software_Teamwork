@@ -8,17 +8,20 @@ import (
 )
 
 type JobRepository interface {
+	WithinJobTx(ctx context.Context, fn func(JobRepository) error) error
 	GetReportByID(ctx context.Context, id string) (Report, error)
 	FindReportJobByID(ctx context.Context, id string) (ReportJob, error)
 	ListReportJobsByReportID(ctx context.Context, reportID string) ([]ReportJob, error)
 	CreateReportJob(ctx context.Context, value ReportJob) (ReportJob, error)
 	UpdateReportJobStatus(ctx context.Context, id string, status JobStatus, errorCode, errorMessage string, startedAt, finishedAt *time.Time) (ReportJob, error)
+	UpdateReportGenerationStatus(ctx context.Context, reportID, jobID string, jobType JobType, status JobStatus, updatedAt time.Time) error
 	UpdateJobAsynqTaskID(ctx context.Context, id, taskID string) error
 	CreateReportJobAttempt(ctx context.Context, value ReportJobAttempt) (ReportJobAttempt, error)
 	UpdateAttemptAsynqTaskID(ctx context.Context, attemptID, taskID string) error
 	SetAttemptFailed(ctx context.Context, attemptID, errCode, errMsg string) error
 	CreateReportFile(ctx context.Context, value ReportFile) (ReportFile, error)
 	UpdateReportFile(ctx context.Context, value ReportFile) (ReportFile, error)
+	GetReportSectionByID(ctx context.Context, id string) (ReportSection, error)
 	// ClaimRetry atomically validates status/retry_count, increments retry_count,
 	// and inserts the attempt — preventing double-retry races.
 	ClaimRetry(ctx context.Context, jobID, attemptID, triggerSource, reason string) (ReportJobAttempt, error)
@@ -70,10 +73,16 @@ func (s *JobService) ListJobs(ctx context.Context, rctx RequestContext, reportID
 }
 
 type CreateJobInput struct {
-	RequestID string
-	UserID    string
-	ReportID  string
-	JobType   JobType
+	RequestID    string
+	UserID       string
+	ReportID     string
+	JobType      JobType
+	TargetScope  string
+	SectionID    string
+	Requirements string
+	MaterialIDs  []string
+	Options      map[string]any
+	Retrieval    map[string]any
 }
 
 func (s *JobService) CreateJob(ctx context.Context, rctx RequestContext, input CreateJobInput) (ReportJob, error) {
@@ -86,55 +95,79 @@ func (s *JobService) CreateJob(ctx context.Context, rctx RequestContext, input C
 	if err != nil {
 		return ReportJob{}, err
 	}
-	if input.JobType == JobTypeReportFileCreation && (report.Status == ReportStatusDeleted || report.DeletedAt != nil) {
+	if report.Status == ReportStatusDeleted || report.DeletedAt != nil {
 		return ReportJob{}, NewError(CodeConflict, "report has been deleted", nil)
+	}
+	targetType, targetID, err := resolveCreateJobTarget(input)
+	if err != nil {
+		return ReportJob{}, err
+	}
+	if err := s.validateCreateJobTarget(ctx, input.ReportID, targetType, targetID); err != nil {
+		return ReportJob{}, err
 	}
 	now := time.Now().UTC()
 	job := ReportJob{
-		ID:          newID(),
-		RequestID:   input.RequestID,
-		Source:      "api",
-		JobType:     input.JobType,
-		TargetType:  "report",
-		TargetID:    input.ReportID,
-		QueueName:   "document",
-		ReportID:    input.ReportID,
-		Status:      JobStatusPending,
-		MaxAttempts: 3,
-		CreatedAt:   now,
+		ID:             newID(),
+		RequestID:      input.RequestID,
+		Source:         "api",
+		JobType:        input.JobType,
+		TargetType:     targetType,
+		TargetID:       targetID,
+		QueueName:      "document",
+		ReportID:       input.ReportID,
+		RequestPayload: createJobRequestPayload(input, targetType, targetID),
+		Status:         JobStatusPending,
+		MaxAttempts:    3,
+		CreatedAt:      now,
 	}
-	created, err := s.repo.CreateReportJob(ctx, job)
-	if err != nil {
-		return ReportJob{}, fmt.Errorf("create report job: %w", err)
-	}
-	// Create attempt #1 so the attempts list reflects every execution, including the first.
+	var created ReportJob
 	attempt := ReportJobAttempt{
 		ID:            newID(),
-		JobID:         created.ID,
+		JobID:         job.ID,
 		AttemptNumber: 1,
 		TriggerSource: "api",
 		Status:        JobStatusPending,
 		CreatedAt:     now,
 	}
-	attempt, err = s.repo.CreateReportJobAttempt(ctx, attempt)
-	if err != nil {
-		return ReportJob{}, fmt.Errorf("create initial attempt: %w", err)
-	}
 	var reportFile ReportFile
-	if input.JobType == JobTypeReportFileCreation {
-		reportFile, err = s.repo.CreateReportFile(ctx, ReportFile{
-			ID:        newID(),
-			ReportID:  report.ID,
-			JobID:     created.ID,
-			Filename:  docxFilename(report),
-			Format:    ReportFileFormatDOCX,
-			Status:    ReportFileStatusPending,
-			CreatedBy: rctx.UserID,
-			CreatedAt: now,
-		})
+	if err := s.repo.WithinJobTx(ctx, func(txRepo JobRepository) error {
+		var err error
+		created, err = txRepo.CreateReportJob(ctx, job)
 		if err != nil {
-			return ReportJob{}, fmt.Errorf("create report file: %w", err)
+			return fmt.Errorf("create report job: %w", err)
 		}
+		if isReportGenerationJobType(created.JobType) {
+			if err := txRepo.UpdateReportGenerationStatus(ctx, created.ReportID, created.ID, created.JobType, JobStatusPending, now); err != nil {
+				if _, ok := Classify(err); ok {
+					return err
+				}
+				return dependencyError("update report generation status", err)
+			}
+		}
+		// Create attempt #1 so the attempts list reflects every execution, including the first.
+		attempt.JobID = created.ID
+		attempt, err = txRepo.CreateReportJobAttempt(ctx, attempt)
+		if err != nil {
+			return fmt.Errorf("create initial attempt: %w", err)
+		}
+		if input.JobType == JobTypeReportFileCreation {
+			reportFile, err = txRepo.CreateReportFile(ctx, ReportFile{
+				ID:        newID(),
+				ReportID:  report.ID,
+				JobID:     created.ID,
+				Filename:  docxFilename(report),
+				Format:    ReportFileFormatDOCX,
+				Status:    ReportFileStatusPending,
+				CreatedBy: rctx.UserID,
+				CreatedAt: now,
+			})
+			if err != nil {
+				return fmt.Errorf("create report file: %w", err)
+			}
+		}
+		return nil
+	}); err != nil {
+		return ReportJob{}, err
 	}
 	taskID, err := s.enqueuer.EnqueueReportJob(ctx, input.JobType, created.ID, attempt.ID, input.RequestID, input.UserID)
 	if err != nil {
@@ -177,6 +210,93 @@ func (s *JobService) CreateJob(ctx context.Context, rctx RequestContext, input C
 		CreatedAt: now,
 	})
 	return created, nil
+}
+
+func (s *JobService) validateCreateJobTarget(ctx context.Context, reportID, targetType, targetID string) error {
+	if targetType != "section" {
+		return nil
+	}
+	section, err := s.repo.GetReportSectionByID(ctx, targetID)
+	if err != nil {
+		return mapRepositoryReadError(err, "report section not found")
+	}
+	if section.ReportID != reportID {
+		return NewError(CodeNotFound, "report section not found", nil)
+	}
+	return nil
+}
+
+func resolveCreateJobTarget(input CreateJobInput) (string, string, error) {
+	scope := strings.TrimSpace(input.TargetScope)
+	sectionID := strings.TrimSpace(input.SectionID)
+	if scope == "" {
+		scope = "report"
+	}
+	if input.JobType == JobTypeSectionRegeneration {
+		if sectionID == "" {
+			return "", "", ValidationError(map[string]string{"target.sectionId": "is required for section_regeneration"})
+		}
+		scope = "section"
+	} else if scope == "section" || sectionID != "" {
+		return "", "", ValidationError(map[string]string{"target.scope": "section scope is only supported for section_regeneration"})
+	}
+	switch scope {
+	case "report":
+		return "report", input.ReportID, nil
+	case "section":
+		if sectionID == "" {
+			return "", "", ValidationError(map[string]string{"target.sectionId": "is required"})
+		}
+		return "section", sectionID, nil
+	default:
+		return "", "", ValidationError(map[string]string{"target.scope": "unsupported target scope"})
+	}
+}
+
+func isReportGenerationJobType(jobType JobType) bool {
+	switch jobType {
+	case JobTypeOutlineGeneration, JobTypeOutlineRegeneration, JobTypeContentGeneration, JobTypeContentRegeneration, JobTypeSectionRegeneration:
+		return true
+	default:
+		return false
+	}
+}
+
+func createJobRequestPayload(input CreateJobInput, targetType, targetID string) map[string]any {
+	payload := map[string]any{}
+	if requirements := strings.TrimSpace(input.Requirements); requirements != "" {
+		payload["requirements"] = requirements
+	}
+	if len(input.MaterialIDs) > 0 {
+		payload["materialIds"] = append([]string(nil), input.MaterialIDs...)
+	}
+	if len(input.Options) > 0 {
+		payload["options"] = cloneJSONLikeMap(input.Options)
+	}
+	if len(input.Retrieval) > 0 {
+		payload["retrieval"] = cloneJSONLikeMap(input.Retrieval)
+	}
+	if input.TargetScope != "" || input.SectionID != "" || targetType != "report" {
+		target := map[string]any{
+			"scope": targetType,
+		}
+		if targetType == "section" {
+			target["sectionId"] = targetID
+		}
+		payload["target"] = target
+	}
+	return payload
+}
+
+func cloneJSONLikeMap(input map[string]any) map[string]any {
+	if input == nil {
+		return nil
+	}
+	clone := make(map[string]any, len(input))
+	for key, value := range input {
+		clone[key] = value
+	}
+	return clone
 }
 
 func (s *JobService) RetryJob(ctx context.Context, rctx RequestContext, id, reason string) (ReportJobAttempt, error) {

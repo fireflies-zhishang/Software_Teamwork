@@ -181,6 +181,14 @@ type ReportSectionVersion struct {
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 }
 
+type ReportSetting struct {
+	ID                   string             `json:"id"`
+	LlmJson              []byte             `json:"llm_json"`
+	DefaultTemplatesJson []byte             `json:"default_templates_json"`
+	FileJson             []byte             `json:"file_json"`
+	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
+}
+
 type ReportTemplate struct {
 	ID              pgtype.UUID        `json:"id"`
 	TemplateName    string             `json:"template_name"`

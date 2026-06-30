@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -47,6 +48,54 @@ func (m *mockJobSvc) ListEvents(ctx context.Context, rctx service.RequestContext
 
 func newTestServerWithJobSvc(svc JobSvc) *Server {
 	return NewServer(Config{JobSvc: svc})
+}
+
+func TestCreateJobAcceptsGenerationPayload(t *testing.T) {
+	var captured service.CreateJobInput
+	mock := &mockJobSvc{
+		createJobFn: func(ctx context.Context, rctx service.RequestContext, input service.CreateJobInput) (service.ReportJob, error) {
+			captured = input
+			return service.ReportJob{
+				ID:          "job-1",
+				ReportID:    input.ReportID,
+				JobType:     input.JobType,
+				TargetType:  input.TargetScope,
+				TargetID:    input.SectionID,
+				Status:      service.JobStatusPending,
+				MaxAttempts: 3,
+				CreatedAt:   time.Now().UTC(),
+			}, nil
+		},
+	}
+	server := newTestServerWithJobSvc(mock)
+	body := `{
+		"jobType": "section_regeneration",
+		"target": {"scope": "section", "sectionId": "section-1"},
+		"requirements": "focus on overload risks",
+		"materialIds": ["material-1"],
+		"options": {"knowledgeBaseIds": ["kb-1"], "topK": 3}
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/reports/report-1/jobs", strings.NewReader(body))
+	req.Header.Set("X-User-Id", "usr_owner")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusAccepted, rec.Body.String())
+	}
+	if captured.JobType != service.JobTypeSectionRegeneration || captured.TargetScope != "section" || captured.SectionID != "section-1" {
+		t.Fatalf("captured input = %+v", captured)
+	}
+	if captured.Requirements != "focus on overload risks" {
+		t.Fatalf("captured requirements = %q", captured.Requirements)
+	}
+	if len(captured.MaterialIDs) != 1 || captured.MaterialIDs[0] != "material-1" {
+		t.Fatalf("captured material IDs = %#v", captured.MaterialIDs)
+	}
+	if captured.Options["topK"] != float64(3) {
+		t.Fatalf("captured options = %#v", captured.Options)
+	}
 }
 
 func TestListJobsEmptyList(t *testing.T) {

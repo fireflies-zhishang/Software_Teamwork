@@ -77,6 +77,54 @@ func (r *PostgresRepository) WithinTx(ctx context.Context, fn func(service.Repor
 	return nil
 }
 
+func (r *PostgresRepository) WithinJobTx(ctx context.Context, fn func(service.JobRepository) error) error {
+	if _, inTx := r.db.(pgx.Tx); inTx {
+		return fn(r)
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin report job transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	txRepo := &PostgresRepository{
+		pool:    r.pool,
+		db:      tx,
+		queries: r.queries.WithTx(tx),
+	}
+	if err := fn(txRepo); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit report job transaction: %w", err)
+	}
+	return nil
+}
+
+func (r *PostgresRepository) WithinGenerationTx(ctx context.Context, fn func(service.ReportGenerationRepository) error) error {
+	if _, inTx := r.db.(pgx.Tx); inTx {
+		return fn(r)
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin report generation transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	txRepo := &PostgresRepository{
+		pool:    r.pool,
+		db:      tx,
+		queries: r.queries.WithTx(tx),
+	}
+	if err := fn(txRepo); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit report generation transaction: %w", err)
+	}
+	return nil
+}
+
 func (r *PostgresRepository) UpsertReportType(ctx context.Context, value service.ReportType) (service.ReportType, error) {
 	if value.CreatedAt.IsZero() {
 		value.CreatedAt = time.Now().UTC()
@@ -221,8 +269,8 @@ func (r *PostgresRepository) CreateReportTemplate(ctx context.Context, value ser
 		value.FileRef,
 		value.Filename,
 		value.FileSize,
-		string(structure.OutlineSchema),
-		string(structure.StyleConfig),
+		jsonRawStringOrDefault(structure.OutlineSchema, "[]"),
+		jsonRawStringOrDefault(structure.StyleConfig, "{}"),
 		value.Description,
 		value.Enabled,
 		value.CreatedBy,
@@ -357,8 +405,8 @@ func (r *PostgresRepository) UpdateReportTemplateStructure(ctx context.Context, 
 		WHERE id = $1 AND deleted_at IS NULL
 		RETURNING structure_json, style_config_json`,
 		templateID,
-		string(structure.OutlineSchema),
-		string(structure.StyleConfig),
+		jsonRawStringOrDefault(structure.OutlineSchema, "[]"),
+		jsonRawStringOrDefault(structure.StyleConfig, "{}"),
 		updatedAt,
 	).Scan(&outline, &style); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -582,21 +630,25 @@ func (r *PostgresRepository) CreateReportJob(ctx context.Context, value service.
 	if err != nil {
 		return service.ReportJob{}, err
 	}
+	requestPayload, err := json.Marshal(jsonObjectOrEmpty(value.RequestPayload))
+	if err != nil {
+		return service.ReportJob{}, fmt.Errorf("encode report job request payload: %w", err)
+	}
 	row := r.db.QueryRow(ctx, `
 		INSERT INTO report_jobs (
 			id, request_id, source, job_type, target_type, target_id, asynq_task_id,
-			queue_name, report_id, template_id, status, error_code, error_message,
+			queue_name, report_id, template_id, request_payload_json, status, error_code, error_message,
 			retry_count, max_attempts, started_at, finished_at, created_at
 		)
 		VALUES (
 			$1, NULLIF($2, ''), $3, $4, $5, $6, NULLIF($7, ''),
-			$8, $9, NULLIF($10, '')::uuid, $11, NULLIF($12, ''), NULLIF($13, ''),
-			$14, $15, $16, $17, $18
+			$8, $9, NULLIF($10, '')::uuid, $11::jsonb, $12, NULLIF($13, ''), NULLIF($14, ''),
+			$15, $16, $17, $18, $19
 		)
 		RETURNING
 			id::text, COALESCE(request_id, ''), source, job_type, target_type,
 			target_id, COALESCE(asynq_task_id, ''), queue_name, report_id::text,
-			COALESCE(template_id::text, ''), status, progress_json,
+			COALESCE(template_id::text, ''), request_payload_json, status, progress_json,
 			COALESCE(error_code, ''), COALESCE(error_message, ''), retry_count,
 			max_attempts, started_at, finished_at, created_at`,
 		value.ID,
@@ -609,6 +661,7 @@ func (r *PostgresRepository) CreateReportJob(ctx context.Context, value service.
 		value.QueueName,
 		value.ReportID,
 		templateID,
+		requestPayload,
 		string(value.Status),
 		value.ErrorCode,
 		value.ErrorMessage,
@@ -637,7 +690,7 @@ func (r *PostgresRepository) FindReportJobByID(ctx context.Context, id string) (
 		SELECT
 			id::text, COALESCE(request_id, ''), source, job_type, target_type,
 			target_id, COALESCE(asynq_task_id, ''), queue_name, report_id::text,
-			COALESCE(template_id::text, ''), status, progress_json,
+			COALESCE(template_id::text, ''), request_payload_json, status, progress_json,
 			COALESCE(error_code, ''), COALESCE(error_message, ''), retry_count,
 			max_attempts, started_at, finished_at, created_at
 		FROM report_jobs
@@ -732,7 +785,7 @@ func (r *PostgresRepository) ListReportJobsByReportID(ctx context.Context, repor
 		SELECT
 			id::text, COALESCE(request_id, ''), source, job_type, target_type,
 			target_id, COALESCE(asynq_task_id, ''), queue_name, report_id::text,
-			COALESCE(template_id::text, ''), status, progress_json,
+			COALESCE(template_id::text, ''), request_payload_json, status, progress_json,
 			COALESCE(error_code, ''), COALESCE(error_message, ''), retry_count,
 			max_attempts, started_at, finished_at, created_at
 		FROM report_jobs
@@ -757,13 +810,30 @@ func (r *PostgresRepository) ListReportJobsByReportID(ctx context.Context, repor
 }
 
 func (r *PostgresRepository) UpdateReportJobStatus(ctx context.Context, id string, status service.JobStatus, errorCode, errorMessage string, startedAt, finishedAt *time.Time) (service.ReportJob, error) {
-	row := r.db.QueryRow(ctx, `
+	return r.updateJobStatusAndReport(ctx, id, status, errorCode, errorMessage, startedAt, finishedAt, reportStatusUpdatedAt(startedAt, finishedAt))
+}
+
+func updateReportJobStatusRow(ctx context.Context, db sqlc.DBTX, id string, status service.JobStatus, errorCode, errorMessage string, startedAt, finishedAt *time.Time) (service.ReportJob, error) {
+	row := db.QueryRow(ctx, `
 		UPDATE report_jobs SET
 			status = $2,
 			progress_json = CASE
 				WHEN $2 = 'running' THEN jsonb_build_object('completed', 0, 'total', 1)
-				WHEN $2 IN ('succeeded', 'partial_succeeded') THEN jsonb_build_object('completed', 1, 'total', 1)
-				WHEN $2 IN ('failed', 'canceled') THEN jsonb_build_object('completed', 0, 'total', 1)
+				WHEN $2 IN ('succeeded', 'partial_succeeded') THEN
+					CASE
+						WHEN progress_json ? 'completed'
+							AND progress_json ? 'total'
+							AND (
+								COALESCE((progress_json ->> 'completed')::int, 0) > 0
+								OR COALESCE((progress_json ->> 'total')::int, 0) > 1
+							) THEN progress_json
+						ELSE jsonb_build_object('completed', 1, 'total', 1)
+					END
+				WHEN $2 IN ('failed', 'canceled') THEN
+					CASE
+						WHEN progress_json ? 'completed' AND progress_json ? 'total' THEN progress_json
+						ELSE jsonb_build_object('completed', 0, 'total', 1)
+					END
 				ELSE progress_json
 			END,
 			error_code = NULLIF($3, ''),
@@ -774,7 +844,7 @@ func (r *PostgresRepository) UpdateReportJobStatus(ctx context.Context, id strin
 		RETURNING
 			id::text, COALESCE(request_id, ''), source, job_type, target_type,
 			target_id, COALESCE(asynq_task_id, ''), queue_name, report_id::text,
-			COALESCE(template_id::text, ''), status, progress_json,
+			COALESCE(template_id::text, ''), request_payload_json, status, progress_json,
 			COALESCE(error_code, ''), COALESCE(error_message, ''), retry_count,
 			max_attempts, started_at, finished_at, created_at`,
 		id,
@@ -791,6 +861,39 @@ func (r *PostgresRepository) UpdateReportJobStatus(ctx context.Context, id strin
 	return job, nil
 }
 
+func (r *PostgresRepository) UpdateReportGenerationStatus(ctx context.Context, reportID, jobID string, jobType service.JobType, status service.JobStatus, updatedAt time.Time) error {
+	job := service.ReportJob{
+		ID:       jobID,
+		ReportID: reportID,
+		JobType:  jobType,
+	}
+	return updateReportGenerationStatusForJob(ctx, r.db, job, status, updatedAt)
+}
+
+func (r *PostgresRepository) UpdateReportJobProgress(ctx context.Context, id string, completed, total int) error {
+	if completed < 0 {
+		completed = 0
+	}
+	if total < completed {
+		total = completed
+	}
+	jobID, err := parseUUID(id)
+	if err != nil {
+		return service.NewError(service.CodeValidation, "invalid job id", err)
+	}
+	tag, err := r.db.Exec(ctx, `
+		UPDATE report_jobs
+		SET progress_json = jsonb_build_object('completed', $2::int, 'total', $3::int)
+		WHERE id = $1`, jobID, completed, total)
+	if err != nil {
+		return fmt.Errorf("update report job progress: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return service.NewError(service.CodeNotFound, "report job not found", nil)
+	}
+	return nil
+}
+
 func (r *PostgresRepository) UpdateJobAsynqTaskID(ctx context.Context, id, taskID string) error {
 	jobID, err := parseUUID(id)
 	if err != nil {
@@ -805,7 +908,7 @@ func (r *PostgresRepository) UpdateJobAsynqTaskID(ctx context.Context, id, taskI
 
 func (r *PostgresRepository) SetJobRunning(ctx context.Context, id string) error {
 	now := time.Now().UTC()
-	_, err := r.UpdateReportJobStatus(ctx, id, service.JobStatusRunning, "", "", &now, nil)
+	_, err := r.updateJobStatusAndReport(ctx, id, service.JobStatusRunning, "", "", &now, nil, now)
 	if err == nil {
 		_ = r.recordJobEvent(ctx, id, "job.running", "report job started")
 	}
@@ -814,20 +917,153 @@ func (r *PostgresRepository) SetJobRunning(ctx context.Context, id string) error
 
 func (r *PostgresRepository) SetJobSucceeded(ctx context.Context, id string) error {
 	now := time.Now().UTC()
-	_, err := r.UpdateReportJobStatus(ctx, id, service.JobStatusSucceeded, "", "", nil, &now)
+	_, err := r.updateJobStatusAndReport(ctx, id, service.JobStatusSucceeded, "", "", nil, &now, now)
 	if err == nil {
 		_ = r.recordJobEvent(ctx, id, "job.succeeded", "report job succeeded")
 	}
 	return err
 }
 
+func (r *PostgresRepository) SetJobPartialSucceeded(ctx context.Context, id string) error {
+	now := time.Now().UTC()
+	_, err := r.updateJobStatusAndReport(ctx, id, service.JobStatusPartialSucceeded, "", "", nil, &now, now)
+	if err == nil {
+		_ = r.recordJobEvent(ctx, id, "job.partial_succeeded", "report job partially succeeded")
+	}
+	return err
+}
+
 func (r *PostgresRepository) SetJobFailed(ctx context.Context, id, errCode, errMsg string) error {
 	now := time.Now().UTC()
-	_, err := r.UpdateReportJobStatus(ctx, id, service.JobStatusFailed, errCode, errMsg, nil, &now)
+	_, err := r.updateJobStatusAndReport(ctx, id, service.JobStatusFailed, errCode, errMsg, nil, &now, now)
 	if err == nil {
 		_ = r.recordJobEvent(ctx, id, "job.failed", "report job failed")
 	}
 	return err
+}
+
+func (r *PostgresRepository) updateJobStatusAndReport(ctx context.Context, id string, status service.JobStatus, errorCode, errorMessage string, startedAt, finishedAt *time.Time, updatedAt time.Time) (service.ReportJob, error) {
+	if tx, ok := r.db.(pgx.Tx); ok {
+		return updateJobStatusAndReportWithDB(ctx, tx, id, status, errorCode, errorMessage, startedAt, finishedAt, updatedAt)
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return service.ReportJob{}, fmt.Errorf("begin report job status transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	job, err := updateJobStatusAndReportWithDB(ctx, tx, id, status, errorCode, errorMessage, startedAt, finishedAt, updatedAt)
+	if err != nil {
+		return service.ReportJob{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return service.ReportJob{}, fmt.Errorf("commit report job status transaction: %w", err)
+	}
+	return job, nil
+}
+
+func updateJobStatusAndReportWithDB(ctx context.Context, db sqlc.DBTX, id string, status service.JobStatus, errorCode, errorMessage string, startedAt, finishedAt *time.Time, updatedAt time.Time) (service.ReportJob, error) {
+	job, err := updateReportJobStatusRow(ctx, db, id, status, errorCode, errorMessage, startedAt, finishedAt)
+	if err != nil {
+		return service.ReportJob{}, err
+	}
+	if err := updateReportGenerationStatusForJob(ctx, db, job, status, updatedAt); err != nil {
+		return service.ReportJob{}, err
+	}
+	return job, nil
+}
+
+func reportStatusUpdatedAt(startedAt, finishedAt *time.Time) time.Time {
+	if finishedAt != nil {
+		return finishedAt.UTC()
+	}
+	if startedAt != nil {
+		return startedAt.UTC()
+	}
+	return time.Now().UTC()
+}
+
+func updateReportGenerationStatusForJob(ctx context.Context, db sqlc.DBTX, job service.ReportJob, jobStatus service.JobStatus, updatedAt time.Time) error {
+	reportStatus, ok := reportStatusForGenerationJob(job.JobType, jobStatus)
+	if !ok {
+		return nil
+	}
+	reportID, err := parseUUID(job.ReportID)
+	if err != nil {
+		return service.NewError(service.CodeValidation, "invalid report id", err)
+	}
+	jobID, err := parseUUID(job.ID)
+	if err != nil {
+		return service.NewError(service.CodeValidation, "invalid job id", err)
+	}
+	setGeneratedAt := shouldSetReportGeneratedAt(job.JobType, jobStatus)
+	tag, err := db.Exec(ctx, `
+		UPDATE reports
+		SET
+			latest_job_id = $2,
+			status = $3,
+			generated_at = CASE WHEN $4::boolean THEN $5::timestamptz ELSE generated_at END,
+			updated_at = $5
+		WHERE id = $1
+		  AND deleted_at IS NULL
+		  AND status <> 'deleted'`,
+		reportID,
+		jobID,
+		string(reportStatus),
+		setGeneratedAt,
+		updatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("update report generation status: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return service.NewError(service.CodeConflict, "report has been deleted", nil)
+	}
+	return nil
+}
+
+func reportStatusForGenerationJob(jobType service.JobType, jobStatus service.JobStatus) (service.ReportStatus, bool) {
+	isOutline := false
+	switch jobType {
+	case service.JobTypeOutlineGeneration, service.JobTypeOutlineRegeneration:
+		isOutline = true
+	case service.JobTypeContentGeneration, service.JobTypeContentRegeneration, service.JobTypeSectionRegeneration:
+	default:
+		return "", false
+	}
+	switch jobStatus {
+	case service.JobStatusPending, service.JobStatusRunning:
+		if isOutline {
+			return service.ReportStatusOutlineGenerating, true
+		}
+		return service.ReportStatusContentGenerating, true
+	case service.JobStatusSucceeded:
+		if isOutline {
+			return service.ReportStatusOutlineGenerated, true
+		}
+		return service.ReportStatusGenerated, true
+	case service.JobStatusPartialSucceeded:
+		if isOutline {
+			return service.ReportStatusOutlineGenerated, true
+		}
+		return service.ReportStatusGenerated, true
+	case service.JobStatusFailed, service.JobStatusCanceled:
+		return service.ReportStatusFailed, true
+	default:
+		return "", false
+	}
+}
+
+func shouldSetReportGeneratedAt(jobType service.JobType, jobStatus service.JobStatus) bool {
+	if jobStatus != service.JobStatusSucceeded && jobStatus != service.JobStatusPartialSucceeded {
+		return false
+	}
+	switch jobType {
+	case service.JobTypeContentGeneration, service.JobTypeContentRegeneration, service.JobTypeSectionRegeneration:
+		return true
+	default:
+		return false
+	}
 }
 
 func (r *PostgresRepository) recordJobEvent(ctx context.Context, jobID, eventType, message string) error {
@@ -868,7 +1104,7 @@ func (r *PostgresRepository) IncrementJobRetryCount(ctx context.Context, id stri
 		RETURNING
 			id::text, COALESCE(request_id, ''), source, job_type, target_type,
 			target_id, COALESCE(asynq_task_id, ''), queue_name, report_id::text,
-			COALESCE(template_id::text, ''), status, progress_json,
+			COALESCE(template_id::text, ''), request_payload_json, status, progress_json,
 			COALESCE(error_code, ''), COALESCE(error_message, ''), retry_count,
 			max_attempts, started_at, finished_at, created_at`, jobID)
 	job, err := scanReportJob(row)
@@ -889,11 +1125,11 @@ func (r *PostgresRepository) ClaimRetry(ctx context.Context, jobID, attemptID, t
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	var status string
+	var status, reportID, jobType string
 	var retryCount, maxAttempts int
 	if err := tx.QueryRow(ctx,
-		`SELECT status, retry_count, max_attempts FROM report_jobs WHERE id = $1 FOR UPDATE`, id,
-	).Scan(&status, &retryCount, &maxAttempts); err != nil {
+		`SELECT status, retry_count, max_attempts, report_id::text, job_type FROM report_jobs WHERE id = $1 FOR UPDATE`, id,
+	).Scan(&status, &retryCount, &maxAttempts, &reportID, &jobType); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return service.ReportJobAttempt{}, service.NewError(service.CodeNotFound, "report job not found", err)
 		}
@@ -920,6 +1156,13 @@ func (r *PostgresRepository) ClaimRetry(ctx context.Context, jobID, attemptID, t
 	}
 
 	now := time.Now().UTC()
+	if err := updateReportGenerationStatusForJob(ctx, tx, service.ReportJob{
+		ID:       jobID,
+		ReportID: reportID,
+		JobType:  service.JobType(jobType),
+	}, service.JobStatusPending, now); err != nil {
+		return service.ReportJobAttempt{}, err
+	}
 	row := tx.QueryRow(ctx, `
 		INSERT INTO report_job_attempts (
 			id, job_id, attempt_number, trigger_source, reason, status, created_at
@@ -982,6 +1225,21 @@ func (r *PostgresRepository) SetAttemptSucceeded(ctx context.Context, attemptID 
 	)
 	if err != nil {
 		return fmt.Errorf("set attempt succeeded: %w", err)
+	}
+	return nil
+}
+
+func (r *PostgresRepository) SetAttemptPartialSucceeded(ctx context.Context, attemptID string) error {
+	id, err := parseUUID(attemptID)
+	if err != nil {
+		return service.NewError(service.CodeValidation, "invalid attempt id", err)
+	}
+	_, err = r.db.Exec(ctx,
+		`UPDATE report_job_attempts SET status = 'partial_succeeded', finished_at = $2 WHERE id = $1`,
+		id, time.Now().UTC(),
+	)
+	if err != nil {
+		return fmt.Errorf("set attempt partial succeeded: %w", err)
 	}
 	return nil
 }
@@ -1169,7 +1427,7 @@ func scanReportMaterial(row scanner) (service.ReportMaterial, error) {
 func scanReportJob(row scanner) (service.ReportJob, error) {
 	var value service.ReportJob
 	var jobType, status string
-	var progressRaw []byte
+	var requestPayloadRaw, progressRaw []byte
 	if err := row.Scan(
 		&value.ID,
 		&value.RequestID,
@@ -1181,6 +1439,7 @@ func scanReportJob(row scanner) (service.ReportJob, error) {
 		&value.QueueName,
 		&value.ReportID,
 		&value.TemplateID,
+		&requestPayloadRaw,
 		&status,
 		&progressRaw,
 		&value.ErrorCode,
@@ -1195,6 +1454,14 @@ func scanReportJob(row scanner) (service.ReportJob, error) {
 	}
 	value.JobType = service.JobType(jobType)
 	value.Status = service.JobStatus(status)
+	if len(requestPayloadRaw) > 0 {
+		if err := json.Unmarshal(requestPayloadRaw, &value.RequestPayload); err != nil {
+			return service.ReportJob{}, err
+		}
+	}
+	if value.RequestPayload == nil {
+		value.RequestPayload = map[string]any{}
+	}
 	if len(progressRaw) > 0 {
 		if err := json.Unmarshal(progressRaw, &value.Progress); err != nil {
 			return service.ReportJob{}, err
@@ -1204,6 +1471,20 @@ func scanReportJob(row scanner) (service.ReportJob, error) {
 		value.Progress = map[string]any{}
 	}
 	return value, nil
+}
+
+func jsonObjectOrEmpty(value map[string]any) map[string]any {
+	if value == nil {
+		return map[string]any{}
+	}
+	return value
+}
+
+func jsonRawStringOrDefault(value json.RawMessage, fallback string) string {
+	if len(value) == 0 || strings.TrimSpace(string(value)) == "" {
+		return fallback
+	}
+	return string(value)
 }
 
 func scanReportJobAttempt(row scanner) (service.ReportJobAttempt, error) {
@@ -1246,25 +1527,26 @@ func scanReportEvent(row scanner) (service.ReportEvent, error) {
 
 func reportJobFromSQLC(row sqlc.GetReportJobByIDRow) service.ReportJob {
 	return service.ReportJob{
-		ID:           uuidToString(row.ID),
-		RequestID:    textToString(row.RequestID),
-		Source:       row.Source,
-		JobType:      service.JobType(row.JobType),
-		TargetType:   row.TargetType,
-		TargetID:     row.TargetID,
-		AsynqTaskID:  textToString(row.AsynqTaskID),
-		QueueName:    row.QueueName,
-		ReportID:     uuidToString(row.ReportID),
-		TemplateID:   uuidToString(row.TemplateID),
-		Status:       service.JobStatus(row.Status),
-		Progress:     map[string]any{},
-		ErrorCode:    textToString(row.ErrorCode),
-		ErrorMessage: textToString(row.ErrorMessage),
-		RetryCount:   int(row.RetryCount),
-		MaxAttempts:  int(row.MaxAttempts),
-		StartedAt:    timestamptzToTimePtr(row.StartedAt),
-		FinishedAt:   timestamptzToTimePtr(row.FinishedAt),
-		CreatedAt:    timestamptzToTime(row.CreatedAt),
+		ID:             uuidToString(row.ID),
+		RequestID:      textToString(row.RequestID),
+		Source:         row.Source,
+		JobType:        service.JobType(row.JobType),
+		TargetType:     row.TargetType,
+		TargetID:       row.TargetID,
+		AsynqTaskID:    textToString(row.AsynqTaskID),
+		QueueName:      row.QueueName,
+		ReportID:       uuidToString(row.ReportID),
+		TemplateID:     uuidToString(row.TemplateID),
+		RequestPayload: map[string]any{},
+		Status:         service.JobStatus(row.Status),
+		Progress:       map[string]any{},
+		ErrorCode:      textToString(row.ErrorCode),
+		ErrorMessage:   textToString(row.ErrorMessage),
+		RetryCount:     int(row.RetryCount),
+		MaxAttempts:    int(row.MaxAttempts),
+		StartedAt:      timestamptzToTimePtr(row.StartedAt),
+		FinishedAt:     timestamptzToTimePtr(row.FinishedAt),
+		CreatedAt:      timestamptzToTime(row.CreatedAt),
 	}
 }
 

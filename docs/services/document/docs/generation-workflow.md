@@ -12,8 +12,8 @@
 | --- | --- | --- |
 | 报告记录、大纲、章节 | 已实现 | 可以创建报告、保存大纲、维护章节树和章节版本。 |
 | Report job / attempt / event | 已实现 | 可以创建 job、查询 job、重试、查询 attempts/events。 |
-| asynq worker | 部分实现 | worker 会把 job/attempt 从 pending 推进到 running/succeeded/failed；`report_file_creation` 会执行基础 DOCX 导出，其他生成类 job 仍是状态占位。 |
-| 真实大纲/正文生成 | 未实现 | worker 当前不调用 AI Gateway，也不写入 AI 生成的大纲或章节正文。 |
+| asynq worker | 已实现 | worker 会把 job/attempt 从 pending 推进到 running/succeeded/partial_succeeded/failed；`report_file_creation` 执行基础 DOCX 导出，非文件类生成 job 调用 AI Gateway 生成 executor。 |
+| 基础大纲/正文生成 | 已实现 | `summer_peak_inspection` 可通过 AI Gateway chat 生成大纲、章节骨架和逐章节正文；按请求可通过 Knowledge 获取安全检索上下文。 |
 | 报告文件 / DOCX 导出 | 已实现基础闭环 | `POST /report-files` 创建元数据和任务；worker 使用内置 `SimpleDOCXGenerator` 从已保存章节生成基础 DOCX 并通过 File Service 保存，content endpoint 只读取已成功文件。 |
 | settings / statistics / operation logs | 已实现 | 支持 settings 持久化、AI Gateway profile 校验、统计查询和脱敏操作日志读写。 |
 
@@ -37,11 +37,11 @@
 
 | jobType | 目标语义 | 当前 worker 行为 |
 | --- | --- | --- |
-| `outline_generation` | 根据报告、模板、材料和上下文生成新大纲。 | 只推进任务状态。 |
-| `outline_regeneration` | 基于现有报告重新生成大纲版本。 | 只推进任务状态。 |
-| `content_generation` | 根据当前大纲逐章生成正文。 | 只推进任务状态。 |
-| `content_regeneration` | 重新生成全文正文。 | 只推进任务状态。 |
-| `section_regeneration` | 重新生成指定章节版本。 | 只推进任务状态；单章版本资源本身已实现。 |
+| `outline_generation` | 根据报告、模板、材料和上下文生成新大纲。 | 对 `summer_peak_inspection` 调用 AI Gateway chat，写入 `ReportOutline` 并创建章节骨架。 |
+| `outline_regeneration` | 基于现有报告重新生成大纲版本。 | 同大纲生成，创建新的大纲版本并记录事件。 |
+| `content_generation` | 根据当前大纲逐章生成正文。 | 逐章调用 AI Gateway chat，保存 `ReportSection` 和 `ReportSectionVersion`，更新进度。 |
+| `content_regeneration` | 重新生成全文正文。 | 同正文生成；部分章节失败时保留已成功章节并进入 `partial_succeeded`。 |
+| `section_regeneration` | 重新生成指定章节版本。 | 只处理 `target.sectionId` 指定章节，保存新的章节版本。 |
 | `report_file_creation` | 根据最终报告内容创建 DOCX 文件。 | 读取报告和已保存章节，调用内置 `SimpleDOCXGenerator` 生成基础 DOCX，上传 File Service 后更新文件状态和报告导出元数据。 |
 
 Redis/asynq 只负责排队和执行协调。PostgreSQL 的 `report_jobs`、`report_job_attempts` 和 `report_events` 是业务状态权威。
@@ -73,14 +73,11 @@ jobType=outline_generation
 2. 创建 `ReportJob(status=pending)`。
 3. 创建第 1 次 `ReportJobAttempt(status=pending)`。
 4. 投递 asynq task，并回写 `asynqTaskId`。
-5. Worker 消费后更新 job/attempt 状态。
-
-目标实现还需要：
-
-1. 读取报告、模板结构、材料摘要和已保存的报告配置。
-2. 使用 `ReportSettings` 中的 profile 引用调用 AI Gateway chat completion。
-3. 校验模型输出为合法章节树。
-4. 写入新的 `ReportOutline` 和对应事件。
+5. Worker 消费后读取报告、模板结构、请求要求、材料引用和已保存的报告配置。
+6. 如果请求 `options` 或 `retrieval` 中包含 `knowledgeBaseIds`，且 Document 配置了 Knowledge 服务，则通过 Knowledge 查询安全 `contentPreview` 上下文；否则跳过检索。
+7. 使用 `ReportSettings` 中的 profile 引用调用 AI Gateway chat completion。
+8. 校验模型输出为合法章节树。
+9. 写入新的 `ReportOutline`、章节骨架、进度和对应事件。
 
 ### 3. 编辑大纲和章节
 
@@ -105,7 +102,7 @@ POST /api/v1/reports/{reportId}/jobs
 jobType=content_generation
 ```
 
-当前 worker 只更新状态。目标实现需要逐章节调用 AI Gateway，保存章节正文、结构化表格、引用摘要和事件。部分章节失败时，已成功章节不得被回滚；job 应进入 `partial_succeeded` 或 `failed`，具体枚举以 OpenAPI 为准。
+当前 worker 会逐章节调用 AI Gateway，保存章节正文、结构化表格、章节版本、进度和事件。部分章节失败时，已成功章节不会回滚；已有输出时 job 进入 `partial_succeeded`，没有可用输出时进入 `failed`。
 
 ### 5. 创建报告文件
 
@@ -125,7 +122,7 @@ GET /api/v1/report-files/{reportFileId}/content
 4. 通过 File Service 保存底层 bytes，并在 Document 回写 `ReportFile(fileRef, fileSize, status=succeeded)` 和报告导出元数据。
 5. `GET /report-files/{reportFileId}/content` 只在文件 `succeeded` 且 File Service 可返回内容时流式读取文件。
 
-后续富 DOCX 实现还需要读取当前大纲、样式配置和模板能力，并固定 Pandoc/LibreOffice worker 镜像或 CLI 版本。不要把非文件类 report job succeeded 解读为已有 AI 大纲、AI 正文或富 DOCX。
+后续富 DOCX 实现还需要读取当前大纲、样式配置和模板能力，并固定 Pandoc/LibreOffice worker 镜像或 CLI 版本。不要把基础 DOCX 导出解读为已有富 DOCX 排版能力。
 
 ## 下游服务边界
 
@@ -151,14 +148,14 @@ GET /api/v1/reports/{reportId}/events
 | 阶段 | 最小验收 |
 | --- | --- |
 | Job 状态机 | 创建 job 后能查到 job、attempt 和事件；worker 能推进 pending/running/succeeded/failed；重试不会双重 claim。 |
-| 大纲生成 | job succeeded 后产生合法 `ReportOutline`；失败时错误摘要脱敏；用户编辑不被隐式覆盖。 |
-| 正文生成 | 按章节保存内容和版本；部分失败保留已生成章节；引用和材料摘要不泄露内部 object key。 |
+| 大纲生成 | job succeeded 后产生合法 `ReportOutline` 和章节骨架；失败时错误摘要脱敏；用户编辑不被隐式覆盖。 |
+| 正文生成 | 按章节保存内容和版本；部分失败保留已生成章节；引用和材料摘要不泄露内部 object key、chunk id 或 provider 原始错误。 |
 | DOCX 创建 | 基础路径已实现：`POST /report-files` 生成元数据并入队，`report_file_creation` worker 生成基础 DOCX，content endpoint 能返回已成功文件流；后续仍需跨服务 smoke 和富 DOCX 工具链。 |
 | 配置/统计/日志 | settings 可持久化 AI Gateway profile 引用；statistics 和 operation logs 不读取 provider/API key 等敏感字段。当前已完成服务端基础闭环。 |
 
 ## 当前不可承诺事项
 
 - 不能承诺未配置 PostgreSQL、Redis、File Service 和 document worker 的一键本地环境可以生成 DOCX。
-- 不能承诺非文件类 report job succeeded 后已有大纲、正文或文件内容。
-- 不能承诺 Document 已经调用 AI Gateway。
+- 不能承诺未配置 AI Gateway profile 的环境可以生成 AI 大纲或正文。
+- 不能承诺 `coal_inventory_audit` 已经完成 AI 生成业务策略。
 - 不能承诺 Pandoc/LibreOffice 富 DOCX 工具链已经落地。

@@ -147,7 +147,7 @@ func TestPostgresRepositoryAdminSettingsLogsAndStats(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetReportStatisticsOverview() error = %v", err)
 	}
-	if overview.ReportCount != 1 || overview.TemplateCount != 1 || overview.MaterialCount != 1 || overview.JobStatusCounts[string(service.JobStatusSucceeded)] != 1 {
+	if overview.ReportCount != 1 || overview.TemplateCount != 3 || overview.MaterialCount != 1 || overview.JobStatusCounts[string(service.JobStatusSucceeded)] != 1 {
 		t.Fatalf("overview = %+v", overview)
 	}
 	daily, err := repo.ListReportDailyStatistics(ctx, 30)

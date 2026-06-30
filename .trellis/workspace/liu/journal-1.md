@@ -493,3 +493,136 @@ Fixed PR #290 hidden review by refreshing report outlines, sections, detail, rec
 ### Next Steps
 
 - None - task complete
+
+
+## Session 15: Document report generation orchestration
+
+**Date**: 2026-06-30
+**Task**: Document report generation orchestration
+**Branch**: `PrimeTeam/feat/report-generation-orchestration`
+
+### Summary
+
+Implemented C-005 Document report generation orchestration through AI Gateway chat, optional Knowledge retrieval, partial success handling, progress/events, docs and backend spec updates.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4b2a7fa` | (see git log) |
+| `e09b4cf` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 16: PR 334 review followups
+
+**Date**: 2026-07-01
+**Task**: PR 334 review followups
+**Branch**: `PrimeTeam/feat/report-generation-orchestration`
+
+### Summary
+
+Addressed PR 334 review feedback for Document report generation: protected manual edits by default, aligned partial generation report status, enforced supported report type checks, and added regression coverage.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `895f29b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 17: PR 334 deleted report and target scope review
+
+**Date**: 2026-07-01
+**Task**: PR 334 deleted report and target scope review
+**Branch**: `PrimeTeam/feat/report-generation-orchestration`
+
+### Summary
+
+Rejected deleted report job creation before persistence, aligned target scope OpenAPI enums with implemented report/section scopes, and documented the report job creation contract.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9a8fb70` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 18: Address PR 334 generation review follow-ups
+
+**Date**: 2026-07-01
+**Task**: Address PR 334 generation review follow-ups
+**Branch**: `PrimeTeam/feat/report-generation-orchestration`
+
+### Summary
+
+Rejected section targets for non-section regeneration jobs and made AI outline plus section skeleton writes atomic.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `015fbe9` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

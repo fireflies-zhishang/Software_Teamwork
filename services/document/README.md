@@ -8,8 +8,11 @@ The current implementation provides the service/data baseline, implemented
 report type/template/material/report/outline/section APIs, the report
 job/attempt/event state machine, report file creation, report settings, report
 statistics, and operation logs. DOCX export currently uses the in-process Go
-`SimpleDOCXGenerator`; real AI generation, MCP tools, Pandoc/LibreOffice rich
-DOCX conversion, and AI Gateway generation calls are not implemented yet.
+`SimpleDOCXGenerator`. Basic AI outline and section-content orchestration is
+implemented for the fixed `summer_peak_inspection` report type through AI
+Gateway chat calls, with optional Knowledge retrieval context when configured
+and requested. MCP tools and the Pandoc/LibreOffice rich DOCX conversion
+toolchain remain future work.
 
 ## Local Configuration
 
@@ -21,8 +24,8 @@ Required environment variables:
 | `DOCUMENT_REDIS_ADDR` | `localhost:6380` | Redis/asynq queue endpoint. Redis is not the durable job state authority. |
 | `DOCUMENT_FILE_SERVICE_URL` | `http://localhost:8082` | Internal file service base URL for later template/material/report-file bytes. |
 | `DOCUMENT_FILE_SERVICE_TOKEN` | empty | Service token sent to File Service when request context has no `X-Service-Token`. Falls back to `INTERNAL_SERVICE_TOKEN` when empty. |
-| `DOCUMENT_AI_GATEWAY_URL` | `http://localhost:8086` | Internal AI Gateway base URL for later generation calls. |
-| `DOCUMENT_AI_GATEWAY_PROFILE_ID` | `default-chat` | AI Gateway profile reference used by report settings/default generation. |
+| `DOCUMENT_AI_GATEWAY_URL` | `http://localhost:8086` | Internal AI Gateway base URL for report settings validation and report generation chat calls. |
+| `DOCUMENT_AI_GATEWAY_PROFILE_ID` | `default-chat` | AI Gateway chat profile reference used by report settings/default generation. |
 
 Optional variables:
 
@@ -30,6 +33,8 @@ Optional variables:
 | --- | --- | --- |
 | `DOCUMENT_HTTP_ADDR` | `:8085` | HTTP listen address. |
 | `DOCUMENT_AI_GATEWAY_SERVICE_TOKEN` | empty | Service token sent to AI Gateway profile validation APIs. Falls back to `INTERNAL_SERVICE_TOKEN` when empty. |
+| `DOCUMENT_KNOWLEDGE_SERVICE_URL` | empty | Optional internal Knowledge service base URL. When empty, report generation skips Knowledge retrieval and uses only report/template/request context. |
+| `DOCUMENT_KNOWLEDGE_SERVICE_TOKEN` | empty | Optional service token sent to Knowledge. Falls back to `INTERNAL_SERVICE_TOKEN` when empty. Required when `DOCUMENT_KNOWLEDGE_SERVICE_URL` is set. |
 | `INTERNAL_SERVICE_TOKEN` | empty | Shared internal service token fallback for local/dev deployments. |
 | `DOCUMENT_PANDOC_PATH` | `pandoc` | Reserved path for a future Pandoc-backed rich DOCX worker. The current Dockerfile does not install this CLI. |
 | `DOCUMENT_LIBREOFFICE_PATH` | `soffice` | Reserved path for a future LibreOffice-backed conversion worker. The current Dockerfile does not install this CLI. |
@@ -76,8 +81,10 @@ Gateway exposes these document-owned report routes under `/api/v1`. The service
 local paths below omit that prefix. Implemented routes call the document service
 layer. Job routes persist state and drive the worker state machine; file export
 jobs currently produce basic DOCX packages through the in-process Go generator.
-The richer Pandoc/LibreOffice toolchain remains a future worker dependency and
-is not installed in the current service image.
+Generation jobs for `summer_peak_inspection` call AI Gateway for outline and
+section content and persist the generated outline, sections, section versions,
+progress, and events. The richer Pandoc/LibreOffice toolchain remains a future
+worker dependency and is not installed in the current service image.
 
 | Method | Local path | Operation ID | Status |
 | --- | --- | --- | --- |
@@ -109,8 +116,8 @@ is not installed in the current service image.
 | `PATCH` | `/reports/{reportId}/sections/{sectionId}` | `updateReportSection` | Implemented |
 | `GET` | `/reports/{reportId}/sections/{sectionId}/versions` | `listReportSectionVersions` | Implemented |
 | `POST` | `/reports/{reportId}/sections/{sectionId}/versions` | `createReportSectionVersion` | Implemented |
-| `GET` | `/reports/{reportId}/jobs` | `listReportJobs` | Implemented; state machine only |
-| `POST` | `/reports/{reportId}/jobs` | `createReportJob` | Implemented; enqueues worker task |
+| `GET` | `/reports/{reportId}/jobs` | `listReportJobs` | Implemented |
+| `POST` | `/reports/{reportId}/jobs` | `createReportJob` | Implemented; enqueues AI outline/content or file worker task |
 | `GET` | `/report-jobs/{jobId}` | `getReportJob` | Implemented |
 | `GET` | `/report-jobs/{jobId}/attempts` | `listReportJobAttempts` | Implemented |
 | `POST` | `/report-jobs/{jobId}/attempts` | `createReportJobAttempt` | Implemented; retry claim/enqueue |

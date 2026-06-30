@@ -478,7 +478,7 @@ func (s *ReportService) DeleteOutlineSection(ctx context.Context, reqCtx Request
 		RequestSource:   requestSource(reqCtx, "api"),
 		OperationResult: OperationResultSucceeded,
 		ParameterSummary: map[string]any{
-			"reportId":        reportID,
+			"reportId":         reportID,
 			"deletedSectionId": sectionID,
 			"sectionCount":     len(updated.Sections),
 		},

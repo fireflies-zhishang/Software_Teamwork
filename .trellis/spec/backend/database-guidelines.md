@@ -635,6 +635,20 @@ Knowledge upload -> File Service stores raw bytes -> Knowledge transaction creat
 
 - PostgreSQL owns durable report state for report types, templates, materials, reports, outlines, sections, section versions, jobs, attempts, events, files, and operation logs.
 - `report_jobs`, `report_job_attempts`, and `report_events` are the durable authority for job status, retry history, failure summaries, and public progress events.
+- Report job progress JSON must use numeric `completed` and `total` fields. Terminal status updates (`succeeded`, `partial_succeeded`, `failed`, `canceled`) must preserve existing meaningful progress such as `1/2` from multi-step generation, and only write default progress (`1/1` for success-like states, `0/1` for failure-like states) when no detailed progress exists.
+- `reports.status`, `reports.latest_job_id`, and `reports.generated_at` are a denormalized public snapshot of generation lifecycle, not the detailed job authority. Generation job `pending`/`running` states must set `latest_job_id` and the matching generating report status. Terminal `partial_succeeded` keeps the report in the closest usable generated state (`outline_generated` for outline jobs, `generated` for content or section jobs), while `failed` and `canceled` map to report `failed`. Content or section `succeeded` and `partial_succeeded` jobs set `generated_at`.
+- `report_sections.outline_id` scopes sections to the outline version that created
+  or owns them. Report-level `content_generation` and `content_regeneration`
+  must generate only sections whose `outline_id` matches the current
+  `report_outlines.is_current` row. `section_regeneration` is the explicit
+  section-targeted exception and may regenerate the requested section after the
+  same-report ownership check.
+- AI-generated outline creation and the derived `report_sections` skeleton
+  creation are one business write. They must run in one short repository
+  transaction after the AI response is parsed; if any skeleton insert fails,
+  the new current outline, previous-current flag updates, and partial skeletons
+  must all roll back.
+- When building JSON with PostgreSQL parameters, cast ambiguous parameters explicitly, for example `jsonb_build_object('completed', $2::int, 'total', $3::int)`, so pgx/PostgreSQL can infer parameter types in integration tests and production.
 - Redis/asynq may store queue payloads, delivery metadata, and task identifiers only. It must not be the only source of report job or event truth.
 - File bytes for templates, materials, and generated report files belong to the File Service. Document tables may persist only service-internal file references and display metadata, never MinIO object keys or bucket names.
 - Repository methods return service-layer domain structs, not generated sqlc rows or raw driver types.
@@ -648,19 +662,28 @@ Knowledge upload -> File Service stores raw bytes -> Knowledge transaction creat
 | Invalid report/job UUID at repository boundary | `validation_error` |
 | Missing report job | `not_found` |
 | Duplicate report/job/attempt/event ID | `conflict` |
+| Section skeleton insert fails after creating a current outline | rollback outline/current-flag/partial sections and return dependency error |
 | PostgreSQL connect/query failure | wrapped dependency error |
 
 ### 5. Good/Base/Bad Cases
 
-- Good: service creates a report job row in PostgreSQL, records attempts/events in PostgreSQL, and stores only the asynq task ID for queue correlation.
+- Good: service creates a report job row in PostgreSQL, records attempts/events in PostgreSQL, stores only the asynq task ID for queue correlation, and commits AI outline plus derived section skeletons atomically.
 - Base: the first implementation slice provides schema, repository, transactions, health checks, and readiness checks without implementing AI generation or DOCX export.
-- Bad: worker stores final job status only in Redis, repository returns sqlc rows to HTTP handlers, or public responses/logs expose `file_ref`, object keys, prompts, provider raw errors, or database details.
+- Bad: worker stores final job status only in Redis, repository returns sqlc rows to HTTP handlers, outline generation leaves a new current outline with missing/partial skeletons after failure, or public responses/logs expose `file_ref`, object keys, prompts, provider raw errors, or database details.
 
 ### 6. Tests Required
 
 - Config tests for required Document Service dependency keys and invalid URL rejection.
 - Handler tests for `/healthz` and `/readyz` response envelopes, request ID propagation, and dependency failure status.
 - Repository integration tests, gated by `DOCUMENT_TEST_DATABASE_URL`, that apply migrations and verify report type, report, job, attempt, event, and transaction behavior.
+- Repository integration tests for multi-step jobs must assert `UpdateReportJobProgress` survives terminal status updates instead of being overwritten by generic `1/1` or `0/1` defaults.
+- Service tests for content generation must cover old and current outline
+  sections and assert progress totals include only current outline sections.
+- Service tests must simulate section skeleton creation failure and assert the
+  new current outline and partial skeletons are rolled back.
+- Repository integration tests, gated by `DOCUMENT_TEST_DATABASE_URL`, should
+  cover the report-generation transaction by creating an outline and section
+  inside the transaction, forcing an error, and asserting rollback.
 - Build and package checks from `services/document`: `go test ./...`, `go build ./cmd/server`, `sqlc generate`, and migration apply against an empty PostgreSQL database when migration tooling is available.
 
 ### 7. Wrong vs Correct
@@ -669,12 +692,14 @@ Knowledge upload -> File Service stores raw bytes -> Knowledge transaction creat
 
 ```text
 asynq task executes -> Redis stores final job status -> API reads Redis as truth
+outline generation -> insert current outline -> skeleton insert fails -> incomplete current outline remains
 ```
 
 #### Correct
 
 ```text
 API creates report_job -> asynq task id is stored for correlation -> worker updates report_jobs/report_job_attempts/report_events in PostgreSQL
+outline generation -> parse AI response outside transaction -> transaction inserts current outline + skeletons -> rollback all on failure
 ```
 
 ## Scenario: Document Initial Report Defaults Seed

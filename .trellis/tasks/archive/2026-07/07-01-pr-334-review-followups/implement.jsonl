@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend service scope and pre-development checklist for Document Service changes"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Report job lifecycle and PostgreSQL-owned report state rules"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Validation and dependency error mapping expectations"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Required Go service checks and test expectations"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Report/job status spans service, repository, and public API semantics"}

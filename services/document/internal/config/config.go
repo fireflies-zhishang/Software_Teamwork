@@ -25,6 +25,8 @@ type Config struct {
 	AIGatewayURL          string
 	AIGatewayProfileID    string
 	AIGatewayServiceToken string
+	KnowledgeServiceURL   string
+	KnowledgeServiceToken string
 	PandocPath            string
 	LibreOfficePath       string
 	ShutdownTimeout       time.Duration
@@ -40,6 +42,8 @@ func Load() (Config, error) {
 		AIGatewayURL:          strings.TrimSpace(os.Getenv("DOCUMENT_AI_GATEWAY_URL")),
 		AIGatewayProfileID:    strings.TrimSpace(os.Getenv("DOCUMENT_AI_GATEWAY_PROFILE_ID")),
 		AIGatewayServiceToken: firstEnv("DOCUMENT_AI_GATEWAY_SERVICE_TOKEN", "INTERNAL_SERVICE_TOKEN"),
+		KnowledgeServiceURL:   strings.TrimSpace(os.Getenv("DOCUMENT_KNOWLEDGE_SERVICE_URL")),
+		KnowledgeServiceToken: firstEnv("DOCUMENT_KNOWLEDGE_SERVICE_TOKEN", "INTERNAL_SERVICE_TOKEN"),
 		PandocPath:            envOr("DOCUMENT_PANDOC_PATH", DefaultPandocPath),
 		LibreOfficePath:       envOr("DOCUMENT_LIBREOFFICE_PATH", DefaultLibreOfficePath),
 		ShutdownTimeout:       DefaultShutdownTimeout,
@@ -76,6 +80,11 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(c.AIGatewayProfileID) == "" {
 		return errors.New("DOCUMENT_AI_GATEWAY_PROFILE_ID is required")
+	}
+	if strings.TrimSpace(c.KnowledgeServiceURL) != "" {
+		if err := validateHTTPURL("DOCUMENT_KNOWLEDGE_SERVICE_URL", c.KnowledgeServiceURL); err != nil {
+			return err
+		}
 	}
 	if strings.TrimSpace(c.PandocPath) == "" {
 		return errors.New("DOCUMENT_PANDOC_PATH is required")

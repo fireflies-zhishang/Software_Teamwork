@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend service checklist for Document Service changes"}
+{"file": ".trellis/spec/backend/api-contracts.md", "reason": "OpenAPI contract and service implementation consistency"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Conflict error behavior for deleted report job creation"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Required Go service checks and regression tests"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Target scope contract spans service, docs, gateway API, and generated clients"}

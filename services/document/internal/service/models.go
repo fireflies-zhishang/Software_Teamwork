@@ -235,25 +235,38 @@ type Report struct {
 }
 
 type ReportJob struct {
-	ID           string
-	RequestID    string
-	Source       string
-	JobType      JobType
-	TargetType   string
-	TargetID     string
-	AsynqTaskID  string
-	QueueName    string
-	ReportID     string
-	TemplateID   string
-	Status       JobStatus
-	Progress     map[string]any
-	ErrorCode    string
-	ErrorMessage string
-	RetryCount   int
-	MaxAttempts  int
-	StartedAt    *time.Time
-	FinishedAt   *time.Time
-	CreatedAt    time.Time
+	ID             string
+	RequestID      string
+	Source         string
+	JobType        JobType
+	TargetType     string
+	TargetID       string
+	AsynqTaskID    string
+	QueueName      string
+	ReportID       string
+	TemplateID     string
+	RequestPayload map[string]any
+	Status         JobStatus
+	Progress       map[string]any
+	ErrorCode      string
+	ErrorMessage   string
+	RetryCount     int
+	MaxAttempts    int
+	StartedAt      *time.Time
+	FinishedAt     *time.Time
+	CreatedAt      time.Time
+}
+
+type ReportGenerationExecutionPayload struct {
+	RequestID string
+	JobType   JobType
+	JobID     string
+	AttemptID string
+	UserID    string
+}
+
+type ReportGenerationExecutionResult struct {
+	Status JobStatus
 }
 
 type ReportFileStatus string
@@ -426,6 +439,51 @@ type ModelProfileReference struct {
 	TimeoutSeconds int
 }
 
+type ChatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type ChatTokenUsage struct {
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+}
+
+type ChatCompletionRequest struct {
+	Model       string
+	ProfileID   string
+	Messages    []ChatMessage
+	Temperature *float64
+	TopP        *float64
+	MaxTokens   int
+}
+
+type ChatCompletionResponse struct {
+	Content      string
+	FinishReason string
+	Usage        ChatTokenUsage
+}
+
+type ReportKnowledgeRetrievalInput struct {
+	Query            string
+	KnowledgeBaseIDs []string
+	TopK             int
+	ScoreThreshold   *float64
+	Rerank           bool
+	RerankTopN       *int
+}
+
+type ReportKnowledgeSnippet struct {
+	Score           float64
+	KnowledgeBaseID string
+	DocumentID      string
+	ChunkID         string
+	DocumentName    string
+	SectionPath     string
+	ContentPreview  string
+}
+
 type ReportStatisticsOverview struct {
 	ReportCount     int
 	TemplateCount   int
@@ -477,35 +535,37 @@ type OperationLogListResult struct {
 }
 
 const (
-	OperationCreateReport         = "create_report"
-	OperationUpdateReport         = "update_report"
-	OperationDeleteReport         = "delete_report"
-	OperationOutlineGeneration    = "outline_generation"
-	OperationOutlineRegeneration  = "outline_regeneration"
-	OperationSaveOutline          = "save_outline"
-	OperationContentGeneration    = "content_generation"
-	OperationContentRegeneration  = "content_regeneration"
-	OperationSectionRegeneration  = "section_regeneration"
-	OperationUpdateSection        = "update_section"
-	OperationCreateSectionVersion = OperationSectionRegeneration
-	OperationUploadTemplate       = "upload_template"
-	OperationUpdateTemplate       = "update_template"
-	OperationDeleteTemplate       = "delete_template"
-	OperationUploadMaterial       = "upload_material"
-	OperationDeleteMaterial       = "delete_material"
-	OperationCreateReportJob      = "create_report_job"
-	OperationRetryReportJob       = "retry_report_job"
-	OperationUpdateReportSettings = "update_report_settings"
-	OperationReportJobRunning     = "report_job_running"
-	OperationReportJobSucceeded   = "report_job_succeeded"
-	OperationReportJobFailed      = "report_job_failed"
-	OperationReportFileCreation   = "report_file_creation"
-	OperationResultSucceeded      = "succeeded"
-	OperationResultFailed         = "failed"
-	DefaultReportSettingsProvider = "ai-gateway"
-	DefaultReportSettingsFormat   = "docx"
-	DefaultReportNumberingMode    = "global"
-	ReportNumberingModeByChapter  = "by_chapter"
-	DefaultReportStatisticsDays   = 30
-	MaximumReportStatisticsDays   = 366
+	OperationCreateReport              = "create_report"
+	OperationUpdateReport              = "update_report"
+	OperationDeleteReport              = "delete_report"
+	OperationOutlineGeneration         = "outline_generation"
+	OperationOutlineRegeneration       = "outline_regeneration"
+	OperationSaveOutline               = "save_outline"
+	OperationContentGeneration         = "content_generation"
+	OperationContentRegeneration       = "content_regeneration"
+	OperationSectionRegeneration       = "section_regeneration"
+	OperationUpdateSection             = "update_section"
+	OperationCreateSectionVersion      = OperationSectionRegeneration
+	OperationUploadTemplate            = "upload_template"
+	OperationUpdateTemplate            = "update_template"
+	OperationDeleteTemplate            = "delete_template"
+	OperationUploadMaterial            = "upload_material"
+	OperationDeleteMaterial            = "delete_material"
+	OperationCreateReportJob           = "create_report_job"
+	OperationRetryReportJob            = "retry_report_job"
+	OperationUpdateReportSettings      = "update_report_settings"
+	OperationReportJobRunning          = "report_job_running"
+	OperationReportJobSucceeded        = "report_job_succeeded"
+	OperationReportJobPartialSucceeded = "report_job_partial_succeeded"
+	OperationReportJobFailed           = "report_job_failed"
+	OperationReportFileCreation        = "report_file_creation"
+	OperationResultSucceeded           = "succeeded"
+	OperationResultPartialSucceeded    = "partial_succeeded"
+	OperationResultFailed              = "failed"
+	DefaultReportSettingsProvider      = "ai-gateway"
+	DefaultReportSettingsFormat        = "docx"
+	DefaultReportNumberingMode         = "global"
+	ReportNumberingModeByChapter       = "by_chapter"
+	DefaultReportStatisticsDays        = 30
+	MaximumReportStatisticsDays        = 366
 )

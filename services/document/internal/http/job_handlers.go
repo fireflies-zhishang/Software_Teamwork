@@ -118,7 +118,17 @@ func toEventResponse(e service.ReportEvent) eventResponse {
 }
 
 type createJobRequest struct {
-	JobType string `json:"jobType"`
+	JobType      string          `json:"jobType"`
+	Target       createJobTarget `json:"target"`
+	Requirements string          `json:"requirements"`
+	MaterialIDs  []string        `json:"materialIds"`
+	Options      map[string]any  `json:"options"`
+	Retrieval    map[string]any  `json:"retrieval"`
+}
+
+type createJobTarget struct {
+	Scope     string `json:"scope"`
+	SectionID string `json:"sectionId"`
 }
 
 func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
@@ -137,10 +147,16 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	input := service.CreateJobInput{
-		RequestID: requestIDFromContext(r.Context()),
-		UserID:    rctx.UserID,
-		ReportID:  reportID,
-		JobType:   service.JobType(req.JobType),
+		RequestID:    requestIDFromContext(r.Context()),
+		UserID:       rctx.UserID,
+		ReportID:     reportID,
+		JobType:      service.JobType(req.JobType),
+		TargetScope:  req.Target.Scope,
+		SectionID:    req.Target.SectionID,
+		Requirements: req.Requirements,
+		MaterialIDs:  req.MaterialIDs,
+		Options:      req.Options,
+		Retrieval:    req.Retrieval,
 	}
 	job, err := s.jobSvc.CreateJob(r.Context(), rctx, input)
 	if err != nil {

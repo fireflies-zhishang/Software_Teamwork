@@ -14,6 +14,7 @@ import (
 	httpapi "github.com/Sakayori-Iroha-168/Software_Teamwork/services/document/internal/http"
 	"github.com/Sakayori-Iroha-168/Software_Teamwork/services/document/internal/platform/aigateway"
 	"github.com/Sakayori-Iroha-168/Software_Teamwork/services/document/internal/platform/fileclient"
+	"github.com/Sakayori-Iroha-168/Software_Teamwork/services/document/internal/platform/knowledgeclient"
 	"github.com/Sakayori-Iroha-168/Software_Teamwork/services/document/internal/repository"
 	"github.com/Sakayori-Iroha-168/Software_Teamwork/services/document/internal/service"
 	"github.com/Sakayori-Iroha-168/Software_Teamwork/services/document/internal/worker"
@@ -47,13 +48,27 @@ func main() {
 		logger.Error("ai gateway client initialization failed", "service", "document", "dependency", "ai-gateway", "error", err)
 		os.Exit(1)
 	}
+	chatClient, err := aigateway.NewChatClient(cfg.AIGatewayURL, cfg.AIGatewayServiceToken, cfg.AIGatewayProfileID, "", nil)
+	if err != nil {
+		logger.Error("ai gateway chat client initialization failed", "service", "document", "dependency", "ai-gateway", "error", err)
+		os.Exit(1)
+	}
+	var knowledgeRetriever service.ReportGenerationKnowledgeRetriever
+	if cfg.KnowledgeServiceURL != "" {
+		knowledgeRetriever, err = knowledgeclient.New(cfg.KnowledgeServiceURL, cfg.KnowledgeServiceToken, nil)
+		if err != nil {
+			logger.Error("knowledge client initialization failed", "service", "document", "dependency", "knowledge", "error", err)
+			os.Exit(1)
+		}
+	}
 	taskClient := worker.NewClient(cfg.RedisAddr)
 	documents := service.New(repo, files)
 	reportService := service.NewReportService(repo)
 	jobService := service.NewJobService(repo, taskClient)
 	adminService := service.NewAdminService(repo, profiles)
 	reportFileService := service.NewReportFileService(repo, files, taskClient, service.NewSimpleDOCXGenerator())
-	w := worker.New(cfg.RedisAddr, logger, repo, reportFileService)
+	reportGenerationService := service.NewReportGenerationService(repo, chatClient, knowledgeRetriever)
+	w := worker.New(cfg.RedisAddr, logger, repo, reportFileService, reportGenerationService)
 	go func() {
 		if err := w.Start(); err != nil {
 			logger.Error("worker failed to start", "service", "document", "error", err)

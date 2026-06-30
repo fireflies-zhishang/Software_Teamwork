@@ -429,6 +429,11 @@ func sanitizeStringValue(value string) string {
 	return trimmed
 }
 
+// SanitizeLogValue returns a low-risk value for logs and operation summaries.
+func SanitizeLogValue(value string) string {
+	return sanitizeStringValue(value)
+}
+
 func containsAny(value string, markers []string) bool {
 	for _, marker := range markers {
 		if strings.Contains(value, marker) {

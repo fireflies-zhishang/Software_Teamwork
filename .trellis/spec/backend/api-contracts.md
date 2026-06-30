@@ -1293,6 +1293,119 @@ POST /report-templates -> document stores uploaded bytes itself -> response retu
 POST /report-templates -> document calls file /internal/v1/files -> stores file_ref internally -> response returns only template id and safe display metadata
 ```
 
+## Scenario: Document Report Job Creation
+
+### 1. Scope / Trigger
+
+- Trigger: adding or changing Document Service report job creation, report job
+  target payloads, generation job lifecycle metadata, worker enqueue behavior, or
+  matching Gateway/Document OpenAPI contracts.
+- Applies to `services/document/internal/http`, `services/document/internal/service`,
+  `services/document/internal/repository`, `services/document/internal/worker`,
+  `services/document/api/openapi.yaml`, `docs/services/document/api/public.openapi.yaml`,
+  and `docs/services/gateway/api/public.openapi.yaml`.
+
+### 2. Signatures
+
+- `POST /reports/{reportId}/jobs`
+- `GET /reports/{reportId}/jobs`
+- `GET /report-jobs/{jobId}`
+- `GET /report-jobs/{jobId}/attempts`
+- `POST /report-jobs/{jobId}/attempts`
+
+`CreateReportJobRequest.target.scope` submit-time enum values are exactly:
+
+```text
+report | section
+```
+
+### 3. Contracts
+
+- Report jobs are the public resource for long-running outline generation,
+  content generation, section regeneration, and report file creation.
+- Supported `jobType` values are `outline_generation`, `outline_regeneration`,
+  `content_generation`, `content_regeneration`, `section_regeneration`, and
+  `report_file_creation`.
+- `target.scope` must only list implemented submit-time values in OpenAPI.
+  Reserved or future values such as `outline` or `file` must not be placed in
+  the enum until the service accepts them.
+- Omitted `target.scope` means report-level generation. `section_regeneration`
+  requires `target.sectionId`, and the section must exist on the same report.
+  `target.scope=section` and any submitted `target.sectionId` are valid only
+  for `section_regeneration`; report-level job types must reject them before
+  persisting a job.
+- Deleted reports are not valid job targets. `ReportStatusDeleted` and non-nil
+  `DeletedAt` must be rejected before creating a `report_jobs` row, an initial
+  `report_job_attempts` row, a report file row, or an asynq task.
+- For accepted jobs, PostgreSQL remains the authority for job, attempt, event,
+  report generation status, and report file state. Redis/asynq only queues work.
+- The initial durable state for an accepted job (`report_jobs`, generation
+  status snapshot, initial `report_job_attempts`, and optional `report_files`)
+  must be created atomically before enqueue. Any failure before enqueue must
+  roll back the initial rows instead of leaving a pending job without an
+  attempt or queue task.
+
+### 4. Validation & Error Matrix
+
+| Condition | Response/error |
+| --- | --- |
+| Unsupported `jobType` | `400 validation_error` |
+| Unsupported `target.scope` | `400 validation_error` |
+| Non-`section_regeneration` job submits `target.scope=section` or `target.sectionId` | `400 validation_error` before job/attempt/file/enqueue side effects |
+| `section_regeneration` missing `target.sectionId` | `400 validation_error` |
+| Target section is missing or belongs to another report | `404 not_found` |
+| Report is soft-deleted by status or `deleted_at` | `409 conflict` before persistence/enqueue |
+| Report becomes invalid while creating initial durable job state | rollback job/attempt/file rows and return the typed conflict or dependency error |
+| Job accepted but enqueue fails | mark created job/attempt/file failed and return dependency error |
+| PostgreSQL query/insert/update failure | `502 dependency_error` unless a typed domain error applies |
+
+### 5. Good/Base/Bad Cases
+
+- Good: a deleted report returns `409 conflict` before any job, attempt, file, or
+  queue side effect; a post-job-insert conflict before enqueue rolls back the
+  inserted job; target scope enums in service-local, Document public, and Gateway
+  public OpenAPI all match `report | section`; `content_generation` with a
+  section target returns `400 validation_error`.
+- Base: a report-level generation request omits `target`, creating a pending job
+  and first pending attempt before enqueueing the asynq task.
+- Bad: OpenAPI advertises `target.scope: file` while the service returns
+  `unsupported target scope`, a deleted/concurrently invalid report leaves an
+  orphan pending job, or `content_generation` persists a section target that the
+  worker later ignores.
+
+### 6. Tests Required
+
+- Service tests must cover deleted-report rejection for every supported job type
+  and assert no job, attempt, report file, or enqueue side effect occurs.
+- Service or repository tests must cover a failure after `report_jobs` insert but
+  before enqueue and assert the inserted initial job state is rolled back.
+- Service tests must cover section target existence and same-report ownership.
+- Service tests must reject section targets for every non-`section_regeneration`
+  job type and assert no job, attempt, report file, or enqueue side effect.
+- Contract checks must parse the changed OpenAPI files and verify
+  `CreateReportJobRequest.target.scope` only advertises implemented values.
+- Run `cd services/document && go test ./...` and
+  `cd services/document && go build ./cmd/server`.
+- Run `git diff --check`.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+OpenAPI target.scope enum: report | outline | section | file
+CreateJob(report status=deleted) -> insert report_jobs(status=pending) -> enqueue/update later fails
+CreateJob(jobType=content_generation, target.scope=section) -> persisted section target -> worker generates all sections
+```
+
+#### Correct
+
+```text
+OpenAPI target.scope enum: report | section
+CreateJob(report status=deleted) -> 409 conflict before job, attempt, file, or enqueue side effects
+CreateJob(jobType=content_generation, target.scope=section) -> 400 validation_error before persistence
+```
+
 ## Scenario: Document Report Settings Statistics And Operation Logs
 
 ### 1. Scope / Trigger

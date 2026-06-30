@@ -1021,21 +1021,32 @@ components:
         jobType:
           type: string
           enum: [outline_generation, outline_regeneration, content_generation, content_regeneration, section_regeneration, report_file_creation]
-        sectionIds:
+        target:
+          type: object
+          description: Generation target. Current implementation supports report-level jobs and section-level regeneration.
+          properties:
+            scope:
+              type: string
+              enum: [report, section]
+              description: Implemented target scopes for job creation. Use section with sectionId for section_regeneration; omit or use report for report-level jobs.
+            sectionId:
+              type: string
+              description: Required when jobType is section_regeneration.
+        requirements:
+          type: string
+          description: Additional generation requirements supplied by the caller.
+        materialIds:
           type: array
           items: { type: string }
-        topic: { type: string }
-        instruction: { type: string }
-        materialFilters:
+          description: Document-owned report material IDs referenced by the generation request.
+        options:
           type: object
-          additionalProperties:
-            type: array
-            items: { type: string }
+          description: Generation options. knowledgeBaseIds, topK, scoreThreshold, rerank, and rerankTopN trigger optional Knowledge retrieval when the Document service is configured with a Knowledge service URL.
+          additionalProperties: true
         retrieval:
           type: object
+          description: Service-local alias for retrieval options; gateway clients should prefer options unless the gateway contract adds this field.
           additionalProperties: true
-        file:
-          $ref: '#/components/schemas/CreateReportFileRequest'
     CreateReportFileRequest:
       type: object
       required: [reportId, format]

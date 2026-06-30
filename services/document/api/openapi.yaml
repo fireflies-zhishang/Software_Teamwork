@@ -264,6 +264,37 @@ components:
       properties:
         jobType:
           $ref: "#/components/schemas/ReportJobType"
+        target:
+          type: object
+          description: Generation target. Current implementation supports report-level jobs and section-level regeneration.
+          properties:
+            scope:
+              type: string
+              enum:
+                - report
+                - section
+              description: Implemented target scopes for job creation. Use section with sectionId for section_regeneration; omit or use report for report-level jobs.
+            sectionId:
+              type: string
+              format: uuid
+              description: Required when jobType is section_regeneration.
+        requirements:
+          type: string
+          description: Additional generation requirements supplied by the caller.
+        materialIds:
+          type: array
+          description: Document-owned report material IDs referenced by the generation request.
+          items:
+            type: string
+            format: uuid
+        options:
+          type: object
+          description: Generation options. knowledgeBaseIds, topK, scoreThreshold, rerank, and rerankTopN trigger optional Knowledge retrieval when the Document service is configured with a Knowledge service URL.
+          additionalProperties: true
+        retrieval:
+          type: object
+          description: Service-local alias for retrieval options; gateway clients should prefer options unless the gateway contract adds this field.
+          additionalProperties: true
     CreateReportJobAttemptRequest:
       type: object
       properties:

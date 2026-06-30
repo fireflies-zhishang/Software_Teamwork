@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend verification checklist"}
+{"file": ".trellis/spec/backend/api-contracts.md", "reason": "Verify OpenAPI enum matches implemented target scope behavior"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Required test/build checks"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer contract consistency review"}

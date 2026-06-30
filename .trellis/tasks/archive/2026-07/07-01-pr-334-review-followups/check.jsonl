@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend service verification checklist"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Validate report job lifecycle status semantics"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Required test and build checks before completion"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Check status data flow across service and repository layers"}
