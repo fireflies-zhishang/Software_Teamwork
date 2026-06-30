@@ -39,6 +39,9 @@ paths:
         - name: reportType
           in: query
           schema: { $ref: '#/components/schemas/ReportTypeCode' }
+        - name: enabled
+          in: query
+          schema: { type: boolean }
       responses:
         '200':
           description: Template list

@@ -6,24 +6,35 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestDocumentOpenAPIReportBaseResourcesMatchImplementedEnvelope(t *testing.T) {
 	spec := readDocumentDocsOpenAPI(t)
+	document := parseOpenAPIDocument(t, spec)
 
-	for _, ref := range []string{
-		"#/components/schemas/ReportTypeListResponse",
-		"#/components/schemas/ReportTemplateResponse",
-		"#/components/schemas/ReportTemplateListResponse",
-		"#/components/schemas/ReportTemplateStructureResponse",
-		"#/components/schemas/ReportMaterialResponse",
-		"#/components/schemas/ReportMaterialListResponse",
-		"#/components/schemas/ReportDailyStatisticsResponse",
-		"#/components/schemas/ReportOperationLogListResponse",
+	for _, route := range []struct {
+		method string
+		path   string
+		status string
+		ref    string
+	}{
+		{method: "get", path: "/report-types", status: "200", ref: "#/components/schemas/ReportTypeListResponse"},
+		{method: "get", path: "/report-templates", status: "200", ref: "#/components/schemas/ReportTemplateListResponse"},
+		{method: "post", path: "/report-templates", status: "201", ref: "#/components/schemas/ReportTemplateResponse"},
+		{method: "get", path: "/report-templates/{reportTemplateId}", status: "200", ref: "#/components/schemas/ReportTemplateResponse"},
+		{method: "patch", path: "/report-templates/{reportTemplateId}", status: "200", ref: "#/components/schemas/ReportTemplateResponse"},
+		{method: "get", path: "/report-templates/{reportTemplateId}/structure", status: "200", ref: "#/components/schemas/ReportTemplateStructureResponse"},
+		{method: "patch", path: "/report-templates/{reportTemplateId}/structure", status: "200", ref: "#/components/schemas/ReportTemplateStructureResponse"},
+		{method: "get", path: "/report-materials", status: "200", ref: "#/components/schemas/ReportMaterialListResponse"},
+		{method: "post", path: "/report-materials", status: "201", ref: "#/components/schemas/ReportMaterialResponse"},
+		{method: "get", path: "/report-materials/{materialId}", status: "200", ref: "#/components/schemas/ReportMaterialResponse"},
+		{method: "get", path: "/report-statistics/overview", status: "200", ref: "#/components/schemas/ReportStatisticsOverviewResponse"},
+		{method: "get", path: "/report-statistics/daily", status: "200", ref: "#/components/schemas/ReportDailyStatisticsResponse"},
+		{method: "get", path: "/report-operation-logs", status: "200", ref: "#/components/schemas/ReportOperationLogListResponse"},
 	} {
-		if !strings.Contains(spec, ref) {
-			t.Fatalf("document OpenAPI missing implemented response schema ref %s", ref)
-		}
+		assertOpenAPISuccessResponseRef(t, document, route.method, route.path, route.status, route.ref)
 	}
 
 	assertSchemaHasFields(t, spec, "ReportTypeListResponse", "data:", "requestId:")
@@ -32,8 +43,11 @@ func TestDocumentOpenAPIReportBaseResourcesMatchImplementedEnvelope(t *testing.T
 	assertSchemaHasFields(t, spec, "ReportTemplateStructureResponse", "data:", "requestId:")
 	assertSchemaHasFields(t, spec, "ReportMaterialResponse", "data:", "requestId:")
 	assertSchemaHasFields(t, spec, "ReportMaterialListResponse", "data:", "page:", "requestId:")
+	assertSchemaHasFields(t, spec, "ReportStatisticsOverviewResponse", "data:", "requestId:")
 	assertSchemaHasFields(t, spec, "ReportDailyStatisticsResponse", "data:", "requestId:")
 	assertSchemaHasFields(t, spec, "ReportOperationLogListResponse", "data:", "page:", "requestId:")
+
+	assertOpenAPIQueryParameter(t, document, "get", "/report-templates", "enabled", "boolean")
 
 	templateSchema := openAPISchemaBlock(t, spec, "ReportTemplate")
 	for _, field := range []string{"templateName:", "version:", "enabled:"} {
@@ -129,4 +143,88 @@ func containsYAMLField(block string, field string) bool {
 		}
 	}
 	return false
+}
+
+func assertOpenAPISuccessResponseRef(t *testing.T, document map[string]any, method string, path string, status string, wantRef string) {
+	t.Helper()
+	operation := openAPIOperationMap(t, document, method, path)
+	gotRef, ok := digString(operation, "responses", status, "content", "application/json", "schema", "$ref")
+	if !ok {
+		t.Fatalf("%s %s missing %s application/json response schema $ref", strings.ToUpper(method), path, status)
+	}
+	if gotRef != wantRef {
+		t.Fatalf("%s %s %s response schema ref = %q, want %q", strings.ToUpper(method), path, status, gotRef, wantRef)
+	}
+}
+
+func assertOpenAPIQueryParameter(t *testing.T, document map[string]any, method string, path string, name string, wantType string) {
+	t.Helper()
+	operation := openAPIOperationMap(t, document, method, path)
+	parameters, ok := operation["parameters"].([]any)
+	if !ok {
+		t.Fatalf("%s %s missing parameters array", strings.ToUpper(method), path)
+	}
+	for _, value := range parameters {
+		parameter, ok := value.(map[string]any)
+		if !ok || parameter["name"] != name || parameter["in"] != "query" {
+			continue
+		}
+		gotType, ok := digString(parameter, "schema", "type")
+		if !ok {
+			t.Fatalf("%s %s query parameter %s missing schema type", strings.ToUpper(method), path, name)
+		}
+		if gotType != wantType {
+			t.Fatalf("%s %s query parameter %s type = %q, want %q", strings.ToUpper(method), path, name, gotType, wantType)
+		}
+		return
+	}
+	t.Fatalf("%s %s missing query parameter %s", strings.ToUpper(method), path, name)
+}
+
+func parseOpenAPIDocument(t *testing.T, spec string) map[string]any {
+	t.Helper()
+	var document map[string]any
+	if err := yaml.Unmarshal([]byte(spec), &document); err != nil {
+		t.Fatalf("parse document OpenAPI YAML: %v", err)
+	}
+	return document
+}
+
+func openAPIOperationMap(t *testing.T, document map[string]any, method string, path string) map[string]any {
+	t.Helper()
+	operation, ok := digMap(document, "paths", path, method)
+	if !ok {
+		t.Fatalf("OpenAPI operation %s %s not found", strings.ToUpper(method), path)
+	}
+	return operation
+}
+
+func digMap(current map[string]any, path ...string) (map[string]any, bool) {
+	for _, key := range path {
+		next, ok := current[key].(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		current = next
+	}
+	return current, true
+}
+
+func digString(current map[string]any, path ...string) (string, bool) {
+	for i, key := range path {
+		value, ok := current[key]
+		if !ok {
+			return "", false
+		}
+		if i == len(path)-1 {
+			result, ok := value.(string)
+			return result, ok
+		}
+		next, ok := value.(map[string]any)
+		if !ok {
+			return "", false
+		}
+		current = next
+	}
+	return "", false
 }
