@@ -470,17 +470,21 @@ Fixed PR #290 hidden review by refreshing report outlines, sections, detail, rec
 
 ### Main Changes
 
-(Add details)
+- Refreshed report outlines, sections, detail, records, and events when a polled job reaches a terminal status.
+- Added a per-job terminal refresh guard to avoid repeated invalidation on rerender/refetch.
+- Added hook regression coverage for terminal job refresh behavior.
 
 ### Git Commits
 
 | Hash | Message |
 |------|---------|
-| `32a3803` | (see git log) |
+| `32a3803` | fix(frontend): refresh report data after jobs complete |
 
 ### Testing
 
-- [OK] (Add test results)
+- [OK] `bun run --cwd apps/web test:unit -- src/features/reports/report-generation.queries.test.tsx src/features/reports/report-generation.api.test.ts src/pages/reports/generate/page.test.tsx src/pages/reports/records/page.test.tsx src/pages/reports/templates/page.test.tsx`
+- [OK] `git diff --check`
+- [OK] Trellis jsonl `ConvertFrom-Json` validation
 
 ### Status
 
