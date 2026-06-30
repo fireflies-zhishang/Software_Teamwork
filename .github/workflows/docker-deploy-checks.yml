@@ -4,8 +4,6 @@ on:
   pull_request:
     branches: [develop]
     paths:
-      - 'apps/web/Dockerfile*'
-      - 'apps/web/.dockerignore'
       - 'services/**/Dockerfile*'
       - 'services/**/.dockerignore'
       - 'services/**/docker-compose*.yml'
@@ -15,8 +13,6 @@ on:
   push:
     branches: [develop]
     paths:
-      - 'apps/web/Dockerfile*'
-      - 'apps/web/.dockerignore'
       - 'services/**/Dockerfile*'
       - 'services/**/.dockerignore'
       - 'services/**/docker-compose*.yml'
@@ -55,16 +51,18 @@ jobs:
               'services/qa/Dockerfile.host',
               'services/qa/Dockerfile.migrate',
             ]);
+            const qaComposeFile = 'services/qa/docker-compose.yml';
+            const qaDbComposeFile = 'services/qa/docker-compose.db.yml';
             const knownComposeFiles = new Set([
               'deploy/docker-compose.yml',
               'services/document/docker-compose.yml',
-              'services/qa/docker-compose.db.yml',
-              'services/qa/docker-compose.yml',
+              qaDbComposeFile,
+              qaComposeFile,
             ]);
             const composeFilePattern =
               /^(deploy|services\/[^/]+)\/.*docker-compose[^/]*\.ya?ml$/u;
             const buildableDockerfilePattern =
-              /^(apps\/web|deploy|services\/[^/]+)\/Dockerfile(?:\.(?:host|migrate))?$/u;
+              /^(deploy|services\/[^/]+)\/Dockerfile(?:\.(?:host|migrate))?$/u;
             const rootDeployComposeFile = 'deploy/docker-compose.yml';
             const rootDeployComposeDependencyPattern =
               /^deploy\/(?:\.env\.example|postgres\/init\/.+|seeds\/.+)$/u;
@@ -138,6 +136,9 @@ jobs:
                   knownComposeFiles.has(file)
                 ) {
                   composeFiles.add(file);
+                  if (file === qaDbComposeFile) {
+                    composeFiles.add(qaComposeFile);
+                  }
                   continue;
                 }
 
