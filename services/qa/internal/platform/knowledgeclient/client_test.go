@@ -41,7 +41,7 @@ func TestRetrievePropagatesTrustedContextAndMapsResults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(results) != 1 || results[0].DocumentID != "doc-1" || results[0].VectorScore != 0 || results[0].RerankScore == nil || *results[0].RerankScore != 0.77 {
+	if len(results) != 1 || results[0].DocumentID != "doc-1" || results[0].VectorScore != nil || results[0].RerankScore == nil || *results[0].RerankScore != 0.77 {
 		t.Fatalf("results=%+v", results)
 	}
 	if results[0].Metadata["chunkIndex"] != float64(2) && results[0].Metadata["chunkIndex"] != 2 || results[0].Metadata["chunkType"] != "paragraph" {
@@ -66,23 +66,54 @@ func TestRetrieveTreatsKnowledgeScoreAsVectorScoreWithoutRerank(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(results) != 1 || results[0].Score != 0.88 || results[0].VectorScore != 0.88 || results[0].RerankScore != nil {
+	if len(results) != 1 || results[0].Score != 0.88 || results[0].VectorScore == nil || *results[0].VectorScore != 0.88 || results[0].RerankScore != nil {
 		t.Fatalf("results=%+v", results)
 	}
 }
 
 func TestRetrieveMapsForbiddenKnowledgeResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "not found through scoped knowledge lookup", http.StatusNotFound)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":{"code":"not_found","message":"resource not found","requestId":"req-test"}}`))
 	}))
 	defer server.Close()
 	client, err := New(server.URL, "service-token", time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = client.Retrieve(context.Background(), "user-1", service.RetrievalTestInput{Question: "query"})
+	_, err = client.Retrieve(context.Background(), "user-1", service.RetrievalTestInput{Question: "query", KnowledgeBaseIDs: []string{"kb-private"}})
 	appErr, ok := service.Classify(err)
 	if !ok || appErr.Code != service.CodeForbidden {
 		t.Fatalf("error=%v, want forbidden", err)
+	}
+}
+
+func TestRetrieveMapsKnowledgeServiceFailuresToDependency(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{name: "unauthorized service token", status: http.StatusUnauthorized, body: `{"error":{"code":"unauthorized","message":"authentication is required","requestId":"req-test"}}`},
+		{name: "route not found", status: http.StatusNotFound, body: `{"error":{"code":"not_found","message":"route not found","requestId":"req-test"}}`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer server.Close()
+			client, err := New(server.URL, "service-token", time.Second)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = client.Retrieve(context.Background(), "user-1", service.RetrievalTestInput{Question: "query", KnowledgeBaseIDs: []string{"kb-1"}})
+			appErr, ok := service.Classify(err)
+			if !ok || appErr.Code != service.CodeDependency {
+				t.Fatalf("error=%v, want dependency_error", err)
+			}
+		})
 	}
 }

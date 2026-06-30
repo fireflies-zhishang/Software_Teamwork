@@ -133,7 +133,7 @@ func TestDocumentedResourceRoundTrip(t *testing.T) {
 		t.Fatalf("llm config=%+v err=%v", llmConfig, err)
 	}
 	retrievalScore := 0.77
-	retrieval, err := repo.SaveRetrievalTestRun(ctx, "integration-user", service.RetrievalTestInput{Question: "query"}, []service.RetrievalTestResult{{KnowledgeBaseID: "kb-1", DocumentID: "doc-1", ChunkID: "chunk-1", SectionPath: "1 / 2", Score: retrievalScore, VectorScore: 0, RerankScore: &retrievalScore, ContentPreview: "preview", Metadata: map[string]any{"chunkIndex": 2}}}, time.Millisecond, nil)
+	retrieval, err := repo.SaveRetrievalTestRun(ctx, "integration-user", service.RetrievalTestInput{Question: "query"}, []service.RetrievalTestResult{{KnowledgeBaseID: "kb-1", DocumentID: "doc-1", ChunkID: "chunk-1", SectionPath: "1 / 2", Score: retrievalScore, RerankScore: &retrievalScore, ContentPreview: "preview", Metadata: map[string]any{"chunkIndex": 2}}}, time.Millisecond, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestDocumentedResourceRoundTrip(t *testing.T) {
 		t.Fatalf("retrieval=%+v err=%v", loaded, err)
 	}
 	loadedResult := loaded.Results[0]
-	if loadedResult.Score != retrievalScore || loadedResult.VectorScore != 0 || loadedResult.RerankScore == nil || *loadedResult.RerankScore != retrievalScore || loadedResult.SectionPath != "1 / 2" {
+	if loadedResult.Score != retrievalScore || loadedResult.VectorScore != nil || loadedResult.RerankScore == nil || *loadedResult.RerankScore != retrievalScore || loadedResult.SectionPath != "1 / 2" {
 		t.Fatalf("retrieval result lost display fields: %+v", loadedResult)
 	}
 	if _, err = repo.GetMetricsOverview(ctx, 1); err != nil {

@@ -72,11 +72,11 @@ func (c *Client) Retrieve(ctx context.Context, userID string, input service.Retr
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusNotFound {
+		code, message := decodeErrorCode(resp.Body)
+		if code == "forbidden" || (code == "not_found" && len(input.KnowledgeBaseIDs) > 0 && strings.Contains(message, "resource not found")) {
 			return nil, service.NewError(service.CodeForbidden, "knowledge base access is forbidden", nil)
 		}
-		return nil, fmt.Errorf("knowledge service returned HTTP %d", resp.StatusCode)
+		return nil, service.NewError(service.CodeDependency, "knowledge retrieval failed", fmt.Errorf("knowledge service returned HTTP %d", resp.StatusCode))
 	}
 	var decoded struct {
 		Data struct {
@@ -102,11 +102,13 @@ func (c *Client) Retrieve(ctx context.Context, userID string, input service.Retr
 	}
 	results := make([]service.RetrievalTestResult, 0, len(decoded.Data.Results))
 	for i, item := range decoded.Data.Results {
-		vectorScore := 0.0
+		var vectorScore *float64
 		if item.VectorScore != nil {
-			vectorScore = *item.VectorScore
+			score := *item.VectorScore
+			vectorScore = &score
 		} else if !retrieval.EnableRerank {
-			vectorScore = item.Score
+			score := item.Score
+			vectorScore = &score
 		}
 		rerankScore := item.RerankScore
 		if rerankScore == nil && retrieval.EnableRerank {
@@ -126,6 +128,19 @@ func (c *Client) Retrieve(ctx context.Context, userID string, input service.Retr
 		results = append(results, service.RetrievalTestResult{RankNo: i + 1, KnowledgeBaseID: item.KnowledgeBaseID, DocumentID: item.DocumentID, DocID: item.DocumentID, ChunkID: item.ChunkID, DocumentName: item.DocumentName, DocName: item.DocumentName, SectionPath: item.SectionPath, Score: item.Score, VectorScore: vectorScore, RerankScore: rerankScore, ContentPreview: item.ContentPreview, Text: item.ContentPreview, Metadata: metadata})
 	}
 	return results, nil
+}
+
+func decodeErrorCode(body io.Reader) (string, string) {
+	var decoded struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(io.LimitReader(body, 4096)).Decode(&decoded); err != nil {
+		return "", ""
+	}
+	return strings.TrimSpace(decoded.Error.Code), strings.TrimSpace(decoded.Error.Message)
 }
 
 func sanitizedMetadata(input map[string]any) map[string]any {

@@ -399,7 +399,7 @@ func (r *Postgres) SaveRetrievalTestRun(ctx context.Context, userID string, inpu
 		item = retrievalResultWithAliases(item)
 		results[i] = item
 		metadata, _ := json.Marshal(retrievalResultSnapshotMetadata(item))
-		_, err = r.pool.Exec(ctx, `INSERT INTO retrieval_test_results(test_run_id,rank_no,external_kb_id,external_doc_id,external_chunk_id,doc_name,text_snapshot,vector_score,rerank_score,metadata) VALUES($1,$2,NULLIF($3,''),NULLIF($4,''),NULLIF($5,''),NULLIF($6,''),NULLIF($7,''),$8,$9,$10)`, run.ID, i+1, item.KnowledgeBaseID, item.DocumentID, item.ChunkID, item.DocumentName, item.ContentPreview, item.VectorScore, item.RerankScore, metadata)
+		_, err = r.pool.Exec(ctx, `INSERT INTO retrieval_test_results(test_run_id,rank_no,external_kb_id,external_doc_id,external_chunk_id,doc_name,text_snapshot,vector_score,rerank_score,metadata) VALUES($1,$2,NULLIF($3,''),NULLIF($4,''),NULLIF($5,''),NULLIF($6,''),NULLIF($7,''),$8,$9,$10)`, run.ID, i+1, item.KnowledgeBaseID, item.DocumentID, item.ChunkID, item.DocumentName, item.ContentPreview, nullableFloat64(item.VectorScore), nullableFloat64(item.RerankScore), metadata)
 		if err != nil {
 			return run, fmt.Errorf("save retrieval test result: %w", err)
 		}
@@ -417,7 +417,7 @@ func (r *Postgres) GetRetrievalTestRun(ctx context.Context, userID, id string) (
 		return run, fmt.Errorf("get retrieval test run: %w", err)
 	}
 	run.Query = run.Question
-	rows, err := r.pool.Query(ctx, `SELECT rank_no,COALESCE(external_kb_id,''),COALESCE(external_doc_id,''),COALESCE(doc_name,''),COALESCE(external_chunk_id,''),COALESCE(vector_score,0),rerank_score,COALESCE(text_snapshot,''),metadata FROM retrieval_test_results WHERE test_run_id=$1 ORDER BY rank_no`, id)
+	rows, err := r.pool.Query(ctx, `SELECT rank_no,COALESCE(external_kb_id,''),COALESCE(external_doc_id,''),COALESCE(doc_name,''),COALESCE(external_chunk_id,''),vector_score,rerank_score,COALESCE(text_snapshot,''),metadata FROM retrieval_test_results WHERE test_run_id=$1 ORDER BY rank_no`, id)
 	if err != nil {
 		return run, err
 	}
@@ -425,9 +425,17 @@ func (r *Postgres) GetRetrievalTestRun(ctx context.Context, userID, id string) (
 	run.Results = []service.RetrievalTestResult{}
 	for rows.Next() {
 		var item service.RetrievalTestResult
+		var vectorScore sql.NullFloat64
+		var rerankScore sql.NullFloat64
 		var metadata []byte
-		if err := rows.Scan(&item.RankNo, &item.KnowledgeBaseID, &item.DocumentID, &item.DocumentName, &item.ChunkID, &item.VectorScore, &item.RerankScore, &item.ContentPreview, &metadata); err != nil {
+		if err := rows.Scan(&item.RankNo, &item.KnowledgeBaseID, &item.DocumentID, &item.DocumentName, &item.ChunkID, &vectorScore, &rerankScore, &item.ContentPreview, &metadata); err != nil {
 			return run, err
+		}
+		if vectorScore.Valid {
+			item.VectorScore = &vectorScore.Float64
+		}
+		if rerankScore.Valid {
+			item.RerankScore = &rerankScore.Float64
 		}
 		_ = json.Unmarshal(metadata, &item.Metadata)
 		applyRetrievalResultSnapshotMetadata(&item)
@@ -448,6 +456,13 @@ func retrievalResultSnapshotMetadata(item service.RetrievalTestResult) map[strin
 	return metadata
 }
 
+func nullableFloat64(value *float64) any {
+	if value == nil {
+		return nil
+	}
+	return *value
+}
+
 func applyRetrievalResultSnapshotMetadata(item *service.RetrievalTestResult) {
 	if item.Metadata == nil {
 		item.Metadata = map[string]any{}
@@ -456,8 +471,8 @@ func applyRetrievalResultSnapshotMetadata(item *service.RetrievalTestResult) {
 		item.Score = score
 	} else if item.RerankScore != nil {
 		item.Score = *item.RerankScore
-	} else {
-		item.Score = item.VectorScore
+	} else if item.VectorScore != nil {
+		item.Score = *item.VectorScore
 	}
 	if item.SectionPath == "" {
 		if sectionPath, ok := item.Metadata["sectionPath"].(string); ok {

@@ -180,7 +180,7 @@ type RetrievalTestResult struct {
 	ChunkID         string         `json:"chunkId,omitempty"`
 	SectionPath     string         `json:"sectionPath,omitempty"`
 	Score           float64        `json:"score,omitempty"`
-	VectorScore     float64        `json:"vectorScore,omitempty"`
+	VectorScore     *float64       `json:"vectorScore,omitempty"`
 	RerankScore     *float64       `json:"rerankScore,omitempty"`
 	ContentPreview  string         `json:"contentPreview,omitempty"`
 	Text            string         `json:"text,omitempty"`

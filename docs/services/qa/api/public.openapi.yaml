@@ -734,13 +734,13 @@ components:
         testedAt: { type: string, format: date-time }
     RetrievalTestRequest:
       type: object
-      required: [query]
+      required: [question]
       properties:
-        query: { type: string }
-        question:
+        question: { type: string }
+        query:
           type: string
           deprecated: true
-          description: Legacy alias for query.
+          description: Legacy alias for question.
         knowledgeBaseIds:
           type: array
           items: { type: string }
