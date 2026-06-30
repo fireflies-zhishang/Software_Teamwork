@@ -6,7 +6,7 @@ Implement issue #282 so the QA Chat page displays only backend-backed, safe QA S
 
 ## Requirements
 
-- Base the work on the latest `upstream/develop`; final verification confirmed `upstream/develop@82e3c37` in branch `Frontend/feat/qa-capability-aligned-chat`.
+- Base the work on the latest `upstream/develop`; final verification confirmed `upstream/develop@74652c3` in branch `Frontend/feat/qa-capability-aligned-chat`.
 - Use public Gateway `/api/v1/**` contracts only; do not call QA, Knowledge, AI Gateway, MCP, or file service internal addresses from browser code.
 - QA SSE handling must use the documented events: `message.created`, `agent.iteration.started`, `reasoning.step`, `tool.started`, `tool.completed`, `tool.failed`, `answer.delta`, `citation.delta`, `answer.completed`, `error`, and optional `heartbeat`.
 - Tool UI must use only QA-provided sanitized fields such as tool name, status, sanitized summary fields, latency, and sanitized error code/message. It must not render full raw event payloads.

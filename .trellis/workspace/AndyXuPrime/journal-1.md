@@ -468,7 +468,7 @@ Addressed PR review finding by applying monotonic SSE sequence validation to ans
 
 | Hash | Message |
 |------|---------|
-| `2216a08` | (see git log) |
+| `af048ff` | (see git log) |
 
 ### Testing
 
@@ -501,7 +501,7 @@ Preserved the remote stream-ordering fix by preventing message payload sequenceN
 
 | Hash | Message |
 |------|---------|
-| `e9c16d5` | (see git log) |
+| `7ae551e` | (see git log) |
 
 ### Testing
 
@@ -534,7 +534,7 @@ Replaced archived Trellis context placeholders with real implementation/check re
 
 | Hash | Message |
 |------|---------|
-| `3abfdf5` | (see git log) |
+| `7d20acc` | (see git log) |
 
 ### Testing
 
@@ -567,7 +567,7 @@ Fixed fatal QA stream errors to use the next sequence after the max dispatched s
 
 | Hash | Message |
 |------|---------|
-| `6d8a9c5` | (see git log) |
+| `1264c9d` | (see git log) |
 
 ### Testing
 
@@ -600,7 +600,7 @@ Updated QA stream parsing to prefer SSE id as the cross-event sequence and cover
 
 | Hash | Message |
 |------|---------|
-| `70b7638` | (see git log) |
+| `68e1cd2` | (see git log) |
 
 ### Testing
 
@@ -623,7 +623,7 @@ Updated QA stream parsing to prefer SSE id as the cross-event sequence and cover
 
 ### Summary
 
-Rebased F-016 branch onto upstream/develop@82e3c37, refreshed Trellis record hashes, and reran frontend verification.
+Rebased F-016 branch onto the latest upstream/develop, refreshed Trellis record hashes, and reran frontend verification.
 
 ### Main Changes
 
@@ -633,7 +633,7 @@ Rebased F-016 branch onto upstream/develop@82e3c37, refreshed Trellis record has
 
 | Hash | Message |
 |------|---------|
-| `6848deb` | (see git log) |
+| `b16d1af` | (see git log) |
 
 ### Testing
 
@@ -666,7 +666,7 @@ Handled latest Codex review by accepting backend QA tool/reasoning payload shape
 
 | Hash | Message |
 |------|---------|
-| `9fb0955` | (see git log) |
+| `9155a19` | (see git log) |
 
 ### Testing
 
