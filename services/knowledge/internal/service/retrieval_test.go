@@ -99,14 +99,14 @@ func TestKnowledgeQueryReranksWithFullContentAndTopN(t *testing.T) {
 	reranker := &retrievalReranker{results: []service.RerankResult{{DocumentID: "chunk_doc_two", Score: .99}}}
 	svc := service.NewKnowledgeService(repo, service.WithVectorIndex(retrievalEmbedder{}, index), service.WithReranker(reranker))
 	topN := 1
-	result, err := svc.CreateKnowledgeQuery(context.Background(), service.RequestContext{UserID: "usr_owner"}, service.KnowledgeQueryInput{Query: "query", KnowledgeBaseIDs: []string{"kb_owned"}, TopK: 2, Rerank: true, RerankTopN: &topN})
+	result, err := svc.CreateKnowledgeQuery(context.Background(), service.RequestContext{UserID: "usr_owner", RequestID: "req_full_content"}, service.KnowledgeQueryInput{Query: "query", KnowledgeBaseIDs: []string{"kb_owned"}, TopK: 2, Rerank: true, RerankTopN: &topN})
 	if err != nil {
 		t.Fatalf("CreateKnowledgeQuery() error = %v", err)
 	}
 	if len(result.Results) != 1 || result.Results[0].ChunkID != "chunk_doc_two" || result.Results[0].Score != .99 {
 		t.Fatalf("reranked results = %+v", result.Results)
 	}
-	if reranker.request.TopN != 1 || len(reranker.request.Documents) != 2 || len(reranker.request.Documents[0].Text) != len(longContent) {
+	if reranker.request.TopN != 1 || reranker.request.UserID != "usr_owner" || reranker.request.RequestID != "req_full_content" || len(reranker.request.Documents) != 2 || len(reranker.request.Documents[0].Text) != len(longContent) {
 		t.Fatalf("rerank request = %+v", reranker.request)
 	}
 	if result.Trace.QdrantCollection != "knowledge_chunks" {
