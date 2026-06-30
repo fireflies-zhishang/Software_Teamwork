@@ -210,7 +210,13 @@ export function KnowledgeDocumentsPage({
   const updateMutation = useUpdateDocument()
   const deleteMutation = useDeleteDocument()
 
-  const { data: kbListData } = useKnowledgeBases(1, 100)
+  const {
+    data: kbListData,
+    error: kbListError,
+    isError: isKbListError,
+    isLoading: isKbListLoading,
+    refetch: refetchKbList,
+  } = useKnowledgeBases(1, 100)
 
   const isMutating =
     uploadMutation.isPending || updateMutation.isPending || deleteMutation.isPending
@@ -265,6 +271,8 @@ export function KnowledgeDocumentsPage({
   const showPagination = totalPages > 1
   const isEmpty = !isLoading && !isError && data && data.items.length === 0
   const documentListIssue = isError ? getGatewayCapabilityIssue(error, '文档列表') : null
+  const knowledgeBaseListIssue =
+    !knowledgeBaseId && isKbListError ? getGatewayCapabilityIssue(kbListError, '知识库列表') : null
 
   // ── Filtered items (client-side keyword search) ──
 
@@ -446,32 +454,55 @@ export function KnowledgeDocumentsPage({
       </div>
 
       {/* KB selector — shown when no KB is pre-selected */}
-      {!knowledgeBaseId && (
+      {!knowledgeBaseId && knowledgeBaseListIssue && (
         <StateBlock
           action={
-            <select
-              className="h-9 rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-              value=""
-              onChange={(e) => {
-                const id = e.target.value
-                if (id) setActiveKbId(id)
-              }}
-            >
-              <option value="" disabled>
-                选择知识库…
-              </option>
-              {(kbListData?.items ?? []).map((kb) => (
-                <option key={kb.id} value={kb.id}>
-                  {kb.name}
-                </option>
-              ))}
-            </select>
+            <Button variant="outline" size="sm" onClick={() => void refetchKbList()}>
+              <Loader2 aria-hidden="true" className="mr-1.5 size-3.5" />
+              重试
+            </Button>
           }
           className="mb-6"
-          icon={FileText}
+          description={knowledgeBaseListIssue.description}
           size="compact"
-          title="选择一个知识库以查看和管理其文档"
-          variant="empty"
+          title={knowledgeBaseListIssue.title}
+          variant={
+            knowledgeBaseListIssue.kind === 'forbidden'
+              ? 'forbidden'
+              : knowledgeBaseListIssue.variant
+          }
+        />
+      )}
+
+      {!knowledgeBaseId && !knowledgeBaseListIssue && (
+        <StateBlock
+          action={
+            !isKbListLoading && (
+              <select
+                className="h-9 rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                value=""
+                onChange={(e) => {
+                  const id = e.target.value
+                  if (id) setActiveKbId(id)
+                }}
+              >
+                <option value="" disabled>
+                  选择知识库…
+                </option>
+                {(kbListData?.items ?? []).map((kb) => (
+                  <option key={kb.id} value={kb.id}>
+                    {kb.name}
+                  </option>
+                ))}
+              </select>
+            )
+          }
+          className="mb-6"
+          description={isKbListLoading ? '正在从 Gateway 获取知识库列表。' : undefined}
+          icon={isKbListLoading ? undefined : FileText}
+          size="compact"
+          title={isKbListLoading ? '正在加载知识库' : '选择一个知识库以查看和管理其文档'}
+          variant={isKbListLoading ? 'loading' : 'empty'}
         />
       )}
 
@@ -483,10 +514,10 @@ export function KnowledgeDocumentsPage({
       )}
 
       {/* Loading state */}
-      {isLoading && <TableSkeleton columns={7} />}
+      {knowledgeBaseId && isLoading && <TableSkeleton columns={7} />}
 
       {/* Error state */}
-      {isError && !isLoading && (
+      {knowledgeBaseId && isError && !isLoading && (
         <StateBlock
           action={
             <Button variant="outline" size="sm" onClick={() => refetch()}>
@@ -506,7 +537,7 @@ export function KnowledgeDocumentsPage({
       )}
 
       {/* Data area */}
-      {!isLoading && !isError && (
+      {knowledgeBaseId && !isLoading && !isError && (
         <>
           {/* Search & filter bar */}
           <div className="mb-4 flex gap-2">

@@ -27,6 +27,9 @@
     "suggested_branch": "Frontend/feat/knowledge-capability-gating",
     "verified_upstream_develop": "2864395550ddafd39f8e24cf4abb38318ca3ec5a",
     "review_fix_commit": "c85a1de",
-    "review_followup": "Document list load errors now use getGatewayCapabilityIssue(error, '文档列表') for 501/not_implemented, 502/dependency_error, and 403/forbidden states."
+    "review_followups": [
+      "Document list load errors now use getGatewayCapabilityIssue(error, '文档列表') for 501/not_implemented, 502/dependency_error, and 403/forbidden states.",
+      "No-knowledge-base document page selector errors now use getGatewayCapabilityIssue(error, '知识库列表') for 501/not_implemented, 502/dependency_error, and 403/forbidden states."
+    ]
   }
 }
