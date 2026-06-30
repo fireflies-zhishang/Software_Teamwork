@@ -378,6 +378,9 @@ are needed.
 
 - Detection jobs must whitelist path-derived matrix entries against a known set
   or a repo-owned manifest before writing outputs.
+- PR changed-file detection must consider both `filename` and
+  `previous_filename` from `pulls.listFiles` so renamed files exercise checks
+  for the old and new affected paths.
 - Pattern checks alone are insufficient for contributor-controlled file names.
 - Shell steps must not interpolate `${{ matrix.* }}` directly inside `run`
   scripts. Pass the value through `env` and quote the shell variable.
@@ -387,6 +390,7 @@ are needed.
 | Condition | Required handling |
 | --- | --- |
 | Changed path matches a broad glob but is not in the known set | Exclude it from the matrix output. |
+| PR file entry has `previous_filename` | Evaluate both old and new paths through the same whitelist/routing rules. |
 | Workflow file changes | Expand to the repo-owned known set, not arbitrary matching paths. |
 | Matrix value is consumed by a shell step | Use `env:` and quote the shell variable in `run`. |
 | A path contains quotes, command separators, spaces, or shell metacharacters | It must not reach shell execution unless it is an explicit known path. |
@@ -395,6 +399,8 @@ are needed.
 
 - Good: `services/qa/Dockerfile.host` is in the known Dockerfile set and builds
   through a quoted `DOCKERFILE` env variable.
+- Good: renaming a file from `services/auth/**` to `services/qa/**` selects both
+  affected services, because old and new paths are evaluated.
 - Base: a service `.dockerignore` change maps to that service's known
   Dockerfiles.
 - Bad: `services/qa/Dockerfile";echo pwned #` matches a broad workflow trigger

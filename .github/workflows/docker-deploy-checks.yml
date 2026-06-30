@@ -70,6 +70,14 @@ jobs:
             const workflowPath = '.github/workflows/docker-deploy-checks.yml';
 
             const changedFiles = new Set();
+            const addChangedFile = (file) => {
+              if (file.filename) {
+                changedFiles.add(file.filename);
+              }
+              if (file.previous_filename) {
+                changedFiles.add(file.previous_filename);
+              }
+            };
 
             if (context.eventName === 'pull_request') {
               const files = await github.paginate(github.rest.pulls.listFiles, {
@@ -79,7 +87,7 @@ jobs:
                 per_page: 100,
               });
               for (const file of files) {
-                changedFiles.add(file.filename);
+                addChangedFile(file);
               }
             } else if (context.eventName === 'push') {
               const response = await github.rest.repos.compareCommitsWithBasehead({
@@ -88,7 +96,7 @@ jobs:
                 basehead: `${context.payload.before}...${context.payload.after}`,
               });
               for (const file of response.data.files || []) {
-                changedFiles.add(file.filename);
+                addChangedFile(file);
               }
             }
 
