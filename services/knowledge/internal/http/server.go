@@ -64,6 +64,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /internal/v1/knowledge-bases/{knowledgeBaseId}/documents", s.handleListDocuments)
 	s.mux.HandleFunc("POST /internal/v1/knowledge-bases/{knowledgeBaseId}/documents", s.handleUploadDocument)
 	s.mux.HandleFunc("GET /internal/v1/documents/{documentId}", s.handleGetDocument)
+	s.mux.HandleFunc("GET /internal/v1/documents/{documentId}/chunks", s.handleListDocumentChunks)
+	s.mux.HandleFunc("GET /internal/v1/documents/{documentId}/content", s.handleGetDocumentContent)
 	s.mux.HandleFunc("POST /internal/v1/knowledge-queries", s.handleCreateKnowledgeQuery)
 	s.mux.HandleFunc("GET /internal/v1/parser-configs", s.handleListParserConfigs)
 	s.mux.HandleFunc("POST /internal/v1/parser-configs", s.handleCreateParserConfig)
@@ -380,6 +382,46 @@ func (s *Server) handleGetDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, documentFromDomain(doc), requestIDFromContext(r.Context()))
+}
+
+func (s *Server) handleListDocumentChunks(w http.ResponseWriter, r *http.Request) {
+	reqCtx, ok := s.gatewayContext(w, r)
+	if !ok {
+		return
+	}
+	page, ok := parsePage(w, r)
+	if !ok {
+		return
+	}
+	list, err := s.knowledge.ListChunks(r.Context(), reqCtx, service.ListChunksInput{
+		DocumentID: r.PathValue("documentId"),
+		Page:       page,
+	})
+	if err != nil {
+		writeAppError(w, r, err)
+		return
+	}
+	writePageJSON(w, http.StatusOK, documentChunksFromDomain(list.Items), list.Page, requestIDFromContext(r.Context()))
+}
+
+func (s *Server) handleGetDocumentContent(w http.ResponseWriter, r *http.Request) {
+	reqCtx, ok := s.gatewayContext(w, r)
+	if !ok {
+		return
+	}
+	content, err := s.knowledge.GetDocumentContent(r.Context(), reqCtx, r.PathValue("documentId"))
+	if err != nil {
+		writeAppError(w, r, err)
+		return
+	}
+	defer content.Body.Close()
+
+	w.Header().Set("Content-Type", content.ContentType)
+	if content.SizeBytes > 0 {
+		w.Header().Set("Content-Length", strconv.FormatInt(content.SizeBytes, 10))
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.Copy(w, content.Body)
 }
 
 func (s *Server) handleCreateKnowledgeQuery(w http.ResponseWriter, r *http.Request) {

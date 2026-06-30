@@ -4,10 +4,12 @@ Knowledge owns knowledge-base metadata, knowledge document metadata/status,
 processing trace state, and future chunk/vector lifecycle coordination.
 
 This implementation includes the A-09 foundation slice, the A-10 document
-upload handoff, and the A-11 ingestion worker path: Knowledge accepts the
-document upload, stores raw bytes through File Service, creates durable
+upload handoff, the A-11 ingestion worker path, A-12 knowledge-query
+retrieval, and the A-14 active-operation contract surface. Knowledge accepts
+the document upload, stores raw bytes through File Service, creates durable
 document/job state, enqueues ingestion work, then consumes the A10 task payload
-to read source bytes, parse, chunk, embed, and index chunks.
+to read source bytes, parse, chunk, embed, index chunks, expose chunk/content
+reads, and run retrieval over hydrated chunks.
 
 ## Runtime
 
@@ -69,6 +71,8 @@ Internal service routes:
 - `GET /internal/v1/knowledge-bases/{knowledgeBaseId}/documents`
 - `POST /internal/v1/knowledge-bases/{knowledgeBaseId}/documents`
 - `GET /internal/v1/documents/{documentId}`
+- `GET /internal/v1/documents/{documentId}/chunks`
+- `GET /internal/v1/documents/{documentId}/content`
 - `POST /internal/v1/knowledge-queries`
 
 Public gateway equivalents are documented in
@@ -122,6 +126,29 @@ Knowledge base deletion is soft-delete-first:
 - leave chunk/index cleanup for a future lifecycle job instead of hard-deleting
   chunks or vectors in this metadata route.
 
+## Local Integration Notes
+
+The default local service path uses PostgreSQL, File Service, Parser Service,
+Redis/asynq, local hashing embeddings, and an in-memory vector index. This is
+enough for upload handoff, worker processing, chunk listing, original content
+reads, and seeded/fake-backed contract tests.
+
+Real Qdrant and AI Gateway integration is optional:
+
+- Leave `QDRANT_URL` empty to use the in-memory vector index.
+- Set `QDRANT_URL=http://qdrant:6333` and `QDRANT_COLLECTION=knowledge_chunks`
+  only after the collection exists and Qdrant is healthy.
+- Leave `EMBEDDING_PROVIDER=local_hashing` for deterministic local runs.
+- Set `EMBEDDING_PROVIDER=ai_gateway`, `AI_GATEWAY_BASE_URL`, and
+  `AI_GATEWAY_SERVICE_TOKEN` only when the optional AI Gateway profile is
+  running with a real provider credential.
+- Set `RERANK_MODEL` only when AI Gateway rerank should be called. Otherwise
+  `rerank=true` requests keep vector order as a local no-op fallback.
+
+`GET /internal/v1/documents/{documentId}/content` validates the Knowledge-owned
+document first, then reads the raw bytes from File Service internally. It never
+exposes `file_ref`, object keys, File Service IDs, or storage URLs in JSON
+responses.
 
 ## Migrations
 
@@ -136,6 +163,12 @@ go run github.com/pressly/goose/v3/cmd/goose@v3.27.1 -dir migrations postgres "$
 go test ./...
 go build ./cmd/server
 ```
+
+Contract tests under `internal/http` use seeded repositories and fake file,
+vector, and embedding adapters, matching the decoupling rule in
+`docs/services/knowledge/docs/api-contract.md` section 2.6. Full upload ->
+worker -> Parser -> Qdrant -> query smoke still requires the local integration
+stack and real dependency configuration.
 
 Regenerate the query package from `sqlc.yaml` after changing SQL files:
 

@@ -101,6 +101,10 @@ Override host ports in `deploy/.env`.
 | `PARSER_SERVICE_BASE_URL` | knowledge | yes | Internal Parser Service URL. |
 | `PARSER_SERVICE_TOKEN` | knowledge/parser | yes | Local service token for Parser Service calls. |
 | `KNOWLEDGE_REDIS_ADDR` | knowledge | yes | Redis/asynq endpoint. |
+| `EMBEDDING_PROVIDER` / `EMBEDDING_MODEL` / `EMBEDDING_DIMENSION` | knowledge | no | Defaults to local hashing embeddings for deterministic local retrieval tests. |
+| `KNOWLEDGE_QDRANT_URL` / `QDRANT_COLLECTION` | knowledge | no | Optional Qdrant REST URL and collection; leave URL empty to use Knowledge's in-memory vector index. |
+| `KNOWLEDGE_AI_GATEWAY_BASE_URL` / `AI_GATEWAY_EMBEDDING_PROFILE_ID` | knowledge | no | Optional AI Gateway embedding profile wiring. Requires `--profile ai` and real provider credentials when `EMBEDDING_PROVIDER=ai_gateway`. |
+| `RERANK_MODEL` / `RERANK_PROFILE_ID` | knowledge | no | Optional AI Gateway rerank wiring. Empty `RERANK_MODEL` keeps rerank requests on the local no-op fallback. |
 | `PARSER_BACKEND` | parser | no | `document` by default for local text/Office parsing; set `paddleocr` for OCR runtime checks. |
 | `QA_DATABASE_URL` | qa | yes | QA PostgreSQL DSN. |
 | `KNOWLEDGE_SERVICE_URL` | qa | yes | Internal Knowledge Service URL. |
@@ -174,6 +178,33 @@ For frontend issues, capture the response `requestId` or `X-Request-Id`, then
 search gateway logs first. If gateway reports a dependency error, search the
 same id in the owner service logs.
 
+## Knowledge Integration Notes
+
+Knowledge active operations are exposed through gateway:
+
+```powershell
+# after logging in and setting $token to the returned access token
+$headers = @{ Authorization = "Bearer $token"; "X-Request-Id" = "req_knowledge_local_001" }
+Invoke-RestMethod "http://localhost:8080/api/v1/knowledge-bases" -Headers $headers
+Invoke-RestMethod "http://localhost:8080/api/v1/knowledge-bases/kb_local_demo/documents" -Headers $headers
+Invoke-RestMethod "http://localhost:8080/api/v1/documents/<documentId>/chunks" -Headers $headers
+Invoke-WebRequest "http://localhost:8080/api/v1/documents/<documentId>/content" -Headers $headers -OutFile .\knowledge-content.bin
+Invoke-RestMethod "http://localhost:8080/api/v1/knowledge-queries" -Method Post -Headers $headers -ContentType "application/json" -Body '{"query":"local demo","topK":3}'
+```
+
+The default Compose profile validates File Service upload/content handoff,
+Parser Service parsing, Redis/asynq enqueue/worker execution, PostgreSQL state,
+and gateway request-id propagation. It uses local hashing embeddings and an
+in-memory vector index unless `KNOWLEDGE_QDRANT_URL` is set.
+
+For real Qdrant smoke, create or verify the `knowledge_chunks` collection before
+setting `KNOWLEDGE_QDRANT_URL=http://qdrant:6333`; otherwise ingestion and query
+calls return `502 dependency_error` from the Qdrant adapter. For real AI Gateway
+embedding or rerank smoke, start `docker compose --profile ai up -d --build`,
+replace the seeded fake provider credential with a usable one, then set
+`EMBEDDING_PROVIDER=ai_gateway`, `KNOWLEDGE_AI_GATEWAY_BASE_URL=http://ai-gateway:8086`,
+and the relevant profile/model variables.
+
 ## Common Dependency Failures
 
 | Symptom | Likely cause | Check |
@@ -181,6 +212,7 @@ same id in the owner service logs.
 | `gateway /readyz` returns `502 dependency_error` | Redis or auth is not ready | `docker compose ps`, `docker compose logs redis auth gateway` |
 | `auth /readyz` returns `postgres unavailable` | Auth migration or PostgreSQL failed | `docker compose logs postgres migrate-auth auth` |
 | Knowledge upload returns `502 dependency_error` | File Service, Parser Service, or Redis queue unavailable | `docker compose logs file parser knowledge redis` |
+| Knowledge query returns `502 dependency_error` | Qdrant collection missing, AI Gateway embedding/rerank unavailable, or fake provider credential still configured | `docker compose logs knowledge qdrant ai-gateway` |
 | Document readyz returns dependency error | Document DB migration failed or DB is unreachable | `docker compose logs migrate-document document postgres` |
 | QA message call fails on model invocation | Optional `ai-gateway` profile not running, fake local credential still in use, or host provider is not listening on `host.docker.internal:11434` | `docker compose --profile ai ps`, `docker compose logs ai-gateway qa` |
 | MinIO bucket missing | `minio-init` did not complete | `docker compose logs minio minio-init` |

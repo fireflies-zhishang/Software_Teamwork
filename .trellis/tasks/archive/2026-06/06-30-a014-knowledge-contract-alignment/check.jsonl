@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend service quality checklist"}
+{"file": ".trellis/spec/backend/api-contracts.md", "reason": "Verify active Knowledge route envelopes, request ids, and ownership boundaries"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Verify error codes, status mapping, and response sanitization"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Verify repository and dependency-boundary consistency"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Verify service-local tests/build/diff checks"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Verify handlers do not absorb service/repository responsibilities"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Verify request id and dependency logging safety"}
+{"file": ".trellis/spec/guides/commit-convention.md", "reason": "Verify commit message format"}

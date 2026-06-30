@@ -81,3 +81,36 @@ Migrated services/auth from pgx v4 to pgx v5, regenerated sqlc code, updated rep
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: A-014 Knowledge contract alignment
+
+**Date**: 2026-06-30
+**Task**: A-014 Knowledge contract alignment
+**Branch**: `L1nggTeam/test/knowledge-contract-alignment`
+
+### Summary
+
+Aligned Knowledge active-operation contracts for chunks, content, and knowledge-queries; added seeded/fake-backed handler and gateway proxy tests; updated Knowledge/OpenAPI/deploy/Trellis docs with remaining real dependency smoke risk.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f996fd2` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

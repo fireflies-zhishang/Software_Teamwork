@@ -214,6 +214,101 @@ gateway -> normalized KnowledgeQueryResponse or ErrorResponse
 - `docs/architecture/service-boundaries.md`
 - `docs/architecture/frontend-backend-contract.md`
 
+## Scenario: Knowledge Active Operation Proxy Contracts
+
+### 1. Scope / Trigger
+
+- Trigger: adding, activating, or changing Knowledge browser-facing operations
+  in the gateway route matrix, Knowledge internal HTTP routes, or Knowledge
+  contract tests.
+- Applies to `services/gateway/internal/http/routes.go`,
+  `services/gateway/internal/http/*_test.go`,
+  `services/knowledge/internal/http`, `services/knowledge/internal/service`,
+  `services/knowledge/api/openapi.yaml`, Knowledge docs, and local Compose
+  env wiring for File, Redis, Qdrant, Parser, or AI Gateway.
+
+### 2. Signatures
+
+- Gateway public routes:
+  - `GET /api/v1/documents/{documentId}/chunks`
+  - `GET /api/v1/documents/{documentId}/content`
+  - `POST /api/v1/knowledge-queries`
+- Knowledge internal routes:
+  - `GET /internal/v1/documents/{documentId}/chunks`
+  - `GET /internal/v1/documents/{documentId}/content`
+  - `POST /internal/v1/knowledge-queries`
+- Content reads return binary bytes, not a JSON success envelope.
+- Chunk and query reads return the standard JSON success/page envelope with
+  `requestId`.
+
+### 3. Contracts
+
+- Gateway must proxy these routes to Knowledge and must not implement chunking,
+  File Service reads, Qdrant queries, embedding, rerank, or visibility rules.
+- Gateway must inject `X-Request-Id`, `X-User-Id`, `X-User-Roles`,
+  `X-User-Permissions`, `X-Forwarded-For`, `X-Forwarded-Proto`, and
+  `X-Service-Token` when configured.
+- Knowledge handlers must keep database, File, vector, embedding, and rerank
+  access behind service/repository/platform interfaces.
+- `documents/{documentId}/content` must first authorize the Knowledge-owned
+  document, then read raw bytes through the File Service boundary. Do not return
+  `file_ref`, object keys, File IDs, MinIO URLs, or internal storage paths in
+  JSON responses.
+- `knowledge-queries` must model retrieval as a resource creation, not a
+  `/search` action path. Vector hits are candidates only; visible document and
+  chunk facts must be hydrated from PostgreSQL.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+| --- | --- |
+| Missing trusted user context | `401 unauthorized` with `error.requestId`. |
+| Invalid pagination or query fields | `400 validation_error` with safe `fields`. |
+| Hidden, deleted, or missing document/knowledge base | `404 not_found`. |
+| File, Redis, Qdrant, Parser, embedding, or rerank failure | `502 dependency_error`; do not leak downstream details. |
+| Content success | Raw bytes with content headers and `X-Request-Id`; no JSON envelope. |
+| Chunk/query success | Standard data/page envelope with request id. |
+
+### 5. Good/Base/Bad Cases
+
+- Good: service-local tests seed a repository and fake File/vector/AI adapters,
+  gateway tests assert proxy path/header propagation, and docs list real
+  dependency smoke as remaining risk when not run.
+- Base: fake-backed contract tests cover active operation envelopes while
+  Compose config documents how to enable real Qdrant or AI Gateway.
+- Bad: gateway returns `501` for an active Knowledge operation after the
+  Knowledge service route exists, or gateway directly reads File Service,
+  Qdrant, prompt/model providers, SQL rows, or generated sqlc types.
+
+### 6. Tests Required
+
+- Knowledge handler tests for chunks, content, and `knowledge-queries` success.
+- Knowledge handler tests for validation, unauthorized, not found, and
+  dependency error envelopes with request id assertions.
+- Gateway proxy tests that the active routes no longer return `501`, map to
+  `/internal/v1/**`, propagate auth/request headers, and pass binary content
+  through without wrapping.
+- `cd services/knowledge && go test ./...` and `go build ./cmd/server`.
+- `cd services/gateway && go test ./...` and `go build ./cmd/server` when the
+  gateway route matrix changes.
+- Compose config parsing when env or local integration docs change.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+gateway /api/v1/documents/{documentId}/content -> File Service object URL
+gateway /api/v1/knowledge/search -> Qdrant search response payload
+```
+
+#### Correct
+
+```text
+gateway /api/v1/documents/{documentId}/content -> knowledge -> File Service bytes
+gateway /api/v1/knowledge-queries -> knowledge -> vector candidates -> PostgreSQL hydrate
+```
+
 ## Scenario: QA Owner Authorization
 
 ### 1. Scope / Trigger

@@ -467,6 +467,45 @@ func (s *Service) GetDocument(ctx context.Context, reqCtx RequestContext, id str
 	return doc, nil
 }
 
+func (s *Service) GetDocumentContent(ctx context.Context, reqCtx RequestContext, id string) (SourceDocument, error) {
+	scope, err := readScope(reqCtx)
+	if err != nil {
+		return SourceDocument{}, err
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return SourceDocument{}, ValidationError("request validation failed", map[string]string{"documentId": "is required"})
+	}
+	doc, err := s.repo.GetDocument(ctx, id, scope)
+	if err != nil {
+		return SourceDocument{}, repositoryError(err)
+	}
+	if s.source == nil {
+		return SourceDocument{}, DependencyError("document content reader is not configured", nil)
+	}
+	if doc.FileRef == nil || strings.TrimSpace(*doc.FileRef) == "" {
+		return SourceDocument{}, DependencyError("document source is not configured", nil)
+	}
+	source, err := s.source.ReadSource(ctx, reqCtx, strings.TrimSpace(*doc.FileRef))
+	if err != nil {
+		return SourceDocument{}, DependencyError("document content read failed", err)
+	}
+	if source.Body == nil {
+		return SourceDocument{}, DependencyError("document content read failed", nil)
+	}
+	source.ContentType = strings.TrimSpace(source.ContentType)
+	if source.ContentType == "" && doc.ContentType != nil {
+		source.ContentType = strings.TrimSpace(*doc.ContentType)
+	}
+	if source.ContentType == "" {
+		source.ContentType = "application/octet-stream"
+	}
+	if source.SizeBytes <= 0 && doc.SizeBytes != nil && *doc.SizeBytes > 0 {
+		source.SizeBytes = *doc.SizeBytes
+	}
+	return source, nil
+}
+
 func normalizeDocumentName(name string) string {
 	name = strings.TrimSpace(name)
 	if name == "" {

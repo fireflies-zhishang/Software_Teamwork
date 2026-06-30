@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend service ownership and required pre-development checklist"}
+{"file": ".trellis/spec/backend/api-contracts.md", "reason": "Gateway envelope, request id, route ownership, and Knowledge query contract rules"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Stable error classification and envelope behavior"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Knowledge PostgreSQL/Qdrant/Redis/File ownership and repository boundary rules"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Go service test/build and integration validation requirements"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Service-local package layout and handler/service/repository responsibilities"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Request id and dependency failure logging safety rules"}
+{"file": ".trellis/spec/guides/commit-convention.md", "reason": "Conventional commit rules for task commits"}

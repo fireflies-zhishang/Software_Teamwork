@@ -179,6 +179,44 @@ paths:
                 $ref: "#/components/schemas/DocumentResponse"
         "401": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
+  /internal/v1/documents/{documentId}/chunks:
+    parameters:
+      - $ref: "#/components/parameters/DocumentId"
+    get:
+      tags: [knowledge]
+      summary: List document chunks
+      operationId: internalListDocumentChunks
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Document chunks.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentChunkListResponse"
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /internal/v1/documents/{documentId}/content:
+    parameters:
+      - $ref: "#/components/parameters/DocumentId"
+    get:
+      tags: [knowledge]
+      summary: Get original document content
+      operationId: internalGetDocumentContent
+      responses:
+        "200":
+          description: Original document content stream.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
   /internal/v1/knowledge-queries:
     post:
       tags: [knowledge]
@@ -336,6 +374,33 @@ components:
         data:
           type: array
           items: { $ref: "#/components/schemas/DocumentSummary" }
+        page: { $ref: "#/components/schemas/PageInfo" }
+        requestId: { type: string }
+    DocumentChunk:
+      type: object
+      required: [id, knowledgeBaseId, documentId, chunkIndex, content, tokenCount, createdAt]
+      properties:
+        id: { type: string }
+        knowledgeBaseId: { type: string }
+        documentId: { type: string }
+        chunkIndex: { type: integer, minimum: 0 }
+        sectionPath: { type: string, nullable: true }
+        content: { type: string }
+        tokenCount: { type: integer, minimum: 0 }
+        chunkType: { type: string, nullable: true }
+        embeddingProvider: { type: string, nullable: true }
+        embeddingDimension: { type: integer, minimum: 1, nullable: true }
+        metadata:
+          type: object
+          additionalProperties: true
+        createdAt: { type: string, format: date-time }
+    DocumentChunkListResponse:
+      type: object
+      required: [data, page, requestId]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/DocumentChunk" }
         page: { $ref: "#/components/schemas/PageInfo" }
         requestId: { type: string }
     KnowledgeQueryRequest:

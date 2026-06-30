@@ -217,6 +217,89 @@ func TestKnowledgeQueriesRouteProxiesToKnowledge(t *testing.T) {
 	}
 }
 
+func TestKnowledgeDocumentChunkAndContentRoutesProxyToKnowledge(t *testing.T) {
+	hasher := testHasher(t)
+	store := newMemorySessionStore()
+	accessToken := "valid-token"
+	store.putToken(t, hasher, accessToken, service.SessionCacheEntry{
+		SessionID:   "sess_1",
+		UserID:      "usr_1",
+		Username:    "alice",
+		Roles:       []string{"analyst"},
+		Permissions: []string{"knowledge:read"},
+		TokenType:   "Bearer",
+		ExpiresAt:   time.Now().Add(time.Hour).UTC(),
+	})
+
+	captured := map[string]http.Header{}
+	downstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		captured[r.URL.Path] = r.Header.Clone()
+		switch r.URL.Path {
+		case "/internal/v1/documents/doc_1/chunks":
+			if r.URL.RawQuery != "page=1&pageSize=10" {
+				t.Fatalf("chunks query = %q", r.URL.RawQuery)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"id":"chunk_1"}],"page":{"page":1,"pageSize":10,"total":1},"requestId":"req_chunks"}`))
+		case "/internal/v1/documents/doc_1/content":
+			w.Header().Set("Content-Type", "application/octet-stream")
+			_, _ = w.Write([]byte{0, 1, 2, 3})
+		default:
+			t.Fatalf("downstream path = %q", r.URL.Path)
+		}
+	}))
+	defer downstream.Close()
+
+	server := newGatewayTestServer(t, gatewayDeps{
+		store:         store,
+		hasher:        hasher,
+		ownerBaseURLs: map[string]string{"knowledge": downstream.URL},
+		serviceToken:  "svc-token",
+	})
+
+	chunksReq := httptest.NewRequest(http.MethodGet, "/api/v1/documents/doc_1/chunks?page=1&pageSize=10", nil)
+	chunksReq.Header.Set("Authorization", "Bearer "+accessToken)
+	chunksReq.Header.Set("X-Request-Id", "req_chunks")
+	chunksRes := httptest.NewRecorder()
+	server.ServeHTTP(chunksRes, chunksReq)
+	if chunksRes.Code == http.StatusNotImplemented {
+		t.Fatalf("chunks status = %d, route should proxy instead of returning 501", chunksRes.Code)
+	}
+	if chunksRes.Code != http.StatusOK || !strings.Contains(chunksRes.Body.String(), `"chunk_1"`) {
+		t.Fatalf("chunks status = %d, body = %s", chunksRes.Code, chunksRes.Body.String())
+	}
+
+	contentReq := httptest.NewRequest(http.MethodGet, "/api/v1/documents/doc_1/content", nil)
+	contentReq.Header.Set("Authorization", "Bearer "+accessToken)
+	contentReq.Header.Set("X-Request-Id", "req_content")
+	contentRes := httptest.NewRecorder()
+	server.ServeHTTP(contentRes, contentReq)
+	if contentRes.Code == http.StatusNotImplemented {
+		t.Fatalf("content status = %d, route should proxy instead of returning 501", contentRes.Code)
+	}
+	if contentRes.Code != http.StatusOK {
+		t.Fatalf("content status = %d, body = %q", contentRes.Code, contentRes.Body.String())
+	}
+	if got := contentRes.Body.Bytes(); !bytes.Equal(got, []byte{0, 1, 2, 3}) {
+		t.Fatalf("content body = %#v", got)
+	}
+
+	for path, requestID := range map[string]string{
+		"/internal/v1/documents/doc_1/chunks":  "req_chunks",
+		"/internal/v1/documents/doc_1/content": "req_content",
+	} {
+		header := captured[path]
+		if header.Get("X-User-Id") != "usr_1" ||
+			header.Get("X-User-Roles") != "analyst" ||
+			header.Get("X-User-Permissions") != "knowledge:read" ||
+			header.Get("X-Request-Id") != requestID ||
+			header.Get("X-Caller-Service") != "gateway" ||
+			header.Get("X-Service-Token") != "svc-token" {
+			t.Fatalf("downstream headers for %s = %#v", path, header)
+		}
+	}
+}
+
 func TestProxyOverwritesSpoofedForwardingHeaders(t *testing.T) {
 	hasher := testHasher(t)
 	store := newMemorySessionStore()
@@ -660,8 +743,9 @@ func TestUnimplementedKnowledgeRouteReturnsNotImplemented(t *testing.T) {
 		hasher:        hasher,
 		ownerBaseURLs: map[string]string{"knowledge": downstream.URL},
 	})
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/documents/doc_1/content", nil)
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/documents/doc_1", strings.NewReader(`{"tags":["锅炉"]}`))
 	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Request-Id", "req_not_implemented")
 	res := httptest.NewRecorder()
 

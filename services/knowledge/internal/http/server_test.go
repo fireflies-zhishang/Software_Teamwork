@@ -147,6 +147,153 @@ func TestDocumentListAndDetail(t *testing.T) {
 	}
 }
 
+func TestDocumentChunksAndContentContract(t *testing.T) {
+	repo, now := seedHTTPKnowledgeDocumentWithChunk(t)
+	source := &httpContentSource{
+		body:        "raw bytes",
+		contentType: "text/markdown",
+		sizeBytes:   9,
+	}
+	knowledge := service.NewWithDependencies(repo, nil, nil, func() time.Time { return now }, func(prefix string) string {
+		return prefix + "_test"
+	}, service.WithProcessingPipeline(source, nil, nil))
+	server := knowledgehttp.NewServer(knowledge, knowledgehttp.Config{})
+
+	chunksReq := authorizedRequest(http.MethodGet, "/internal/v1/documents/doc_1/chunks?page=1&pageSize=10", nil)
+	chunksReq.Header.Set("X-Request-Id", "req_chunks")
+	chunksRes := httptest.NewRecorder()
+	server.ServeHTTP(chunksRes, chunksReq)
+	if chunksRes.Code != http.StatusOK {
+		t.Fatalf("chunks status = %d, body = %s", chunksRes.Code, chunksRes.Body.String())
+	}
+	var chunksBody documentChunkListResponse
+	decodeJSON(t, chunksRes.Body, &chunksBody)
+	if chunksBody.RequestID != "req_chunks" || chunksBody.Page.Total != 1 || len(chunksBody.Data) != 1 {
+		t.Fatalf("chunks body = %+v", chunksBody)
+	}
+	chunk := chunksBody.Data[0]
+	if chunk.ID != "chunk_1" || chunk.DocumentID != "doc_1" || chunk.KnowledgeBaseID != "kb_1" || chunk.TokenCount != 42 {
+		t.Fatalf("chunk = %+v", chunk)
+	}
+	if chunk.SectionPath == nil || *chunk.SectionPath != "1. 总则" || chunk.EmbeddingDimension == nil || *chunk.EmbeddingDimension != 384 {
+		t.Fatalf("chunk detail = %+v", chunk)
+	}
+	if _, exists := chunksBody.Data[0].Metadata["internalUrl"]; exists {
+		t.Fatalf("metadata leaked unexpected internal URL: %+v", chunksBody.Data[0].Metadata)
+	}
+
+	contentReq := authorizedRequest(http.MethodGet, "/internal/v1/documents/doc_1/content", nil)
+	contentReq.Header.Set("X-Request-Id", "req_content")
+	contentRes := httptest.NewRecorder()
+	server.ServeHTTP(contentRes, contentReq)
+	if contentRes.Code != http.StatusOK {
+		t.Fatalf("content status = %d, body = %s", contentRes.Code, contentRes.Body.String())
+	}
+	if got := contentRes.Body.String(); got != "raw bytes" {
+		t.Fatalf("content body = %q", got)
+	}
+	if contentRes.Header().Get("Content-Type") != "text/markdown" || contentRes.Header().Get("Content-Length") != "9" {
+		t.Fatalf("content headers = %#v", contentRes.Header())
+	}
+	if contentRes.Header().Get("X-Request-Id") != "req_content" {
+		t.Fatalf("content request id header = %q", contentRes.Header().Get("X-Request-Id"))
+	}
+	if source.fileID != "file_1" || source.reqCtx.RequestID != "req_content" || source.reqCtx.UserID != "usr_test" {
+		t.Fatalf("source context file=%q ctx=%+v", source.fileID, source.reqCtx)
+	}
+}
+
+func TestDocumentChunksErrorEnvelopesIncludeRequestID(t *testing.T) {
+	server := newHTTPTestServer(t)
+
+	pageReq := authorizedRequest(http.MethodGet, "/internal/v1/documents/doc_1/chunks?page=abc", nil)
+	pageReq.Header.Set("X-Request-Id", "req_bad_page")
+	pageRes := httptest.NewRecorder()
+	server.ServeHTTP(pageRes, pageReq)
+	if pageRes.Code != http.StatusBadRequest {
+		t.Fatalf("invalid page status = %d, body = %s", pageRes.Code, pageRes.Body.String())
+	}
+	var pageBody errorResponseBody
+	decodeJSON(t, pageRes.Body, &pageBody)
+	if pageBody.Error.Code != "validation_error" || pageBody.Error.RequestID != "req_bad_page" || pageBody.Error.Fields["page"] == "" {
+		t.Fatalf("page error = %+v", pageBody.Error)
+	}
+
+	missingReq := authorizedRequest(http.MethodGet, "/internal/v1/documents/missing/chunks", nil)
+	missingReq.Header.Set("X-Request-Id", "req_missing_chunks")
+	missingRes := httptest.NewRecorder()
+	server.ServeHTTP(missingRes, missingReq)
+	if missingRes.Code != http.StatusNotFound {
+		t.Fatalf("missing chunks status = %d, body = %s", missingRes.Code, missingRes.Body.String())
+	}
+	var missingBody errorResponseBody
+	decodeJSON(t, missingRes.Body, &missingBody)
+	if missingBody.Error.Code != "not_found" || missingBody.Error.RequestID != "req_missing_chunks" {
+		t.Fatalf("missing error = %+v", missingBody.Error)
+	}
+}
+
+func TestDocumentContentDependencyErrorEnvelope(t *testing.T) {
+	repo, now := seedHTTPKnowledgeDocumentWithChunk(t)
+	knowledge := service.NewWithDependencies(repo, nil, nil, func() time.Time { return now }, func(prefix string) string {
+		return prefix + "_test"
+	})
+	server := knowledgehttp.NewServer(knowledge, knowledgehttp.Config{})
+
+	req := authorizedRequest(http.MethodGet, "/internal/v1/documents/doc_1/content", nil)
+	req.Header.Set("X-Request-Id", "req_content_dependency")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+	if res.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var body errorResponseBody
+	decodeJSON(t, res.Body, &body)
+	if body.Error.Code != "dependency_error" || body.Error.RequestID != "req_content_dependency" {
+		t.Fatalf("error = %+v", body.Error)
+	}
+}
+
+func TestKnowledgeQueryContractWithSeededRepositoryAndFakeVector(t *testing.T) {
+	repo, now := seedHTTPKnowledgeDocumentWithChunk(t)
+	vector := &httpVectorIndex{
+		hits: []service.VectorSearchHit{{
+			ID:    "point_1",
+			Score: 0.91,
+			Payload: map[string]any{
+				"chunk_id": "chunk_1",
+			},
+		}},
+	}
+	knowledge := service.NewWithDependencies(repo, nil, nil, func() time.Time { return now }, func(prefix string) string {
+		return prefix + "_test"
+	}, service.WithVectorIndex(httpQueryEmbedder{}, vector, "test_chunks"))
+	server := knowledgehttp.NewServer(knowledge, knowledgehttp.Config{})
+
+	req := authorizedRequest(http.MethodPost, "/internal/v1/knowledge-queries", strings.NewReader(`{"query":"breaker policy","knowledgeBaseIds":["kb_1"],"topK":1}`))
+	req.Header.Set("X-Request-Id", "req_query")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+	if res.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var body knowledgeQueryResponse
+	decodeJSON(t, res.Body, &body)
+	if body.RequestID != "req_query" || body.Data.ID != "kq_test" || len(body.Data.Results) != 1 {
+		t.Fatalf("query body = %+v", body)
+	}
+	result := body.Data.Results[0]
+	if result.ChunkID != "chunk_1" || result.DocumentID != "doc_1" || result.KnowledgeBaseID != "kb_1" || result.DocumentName != "规程.pdf" {
+		t.Fatalf("query result = %+v", result)
+	}
+	if body.Data.Trace.QdrantCollection != "test_chunks" || body.Data.Trace.SearchTopK != 5 || body.Data.Trace.HitCount != 1 {
+		t.Fatalf("query trace = %+v", body.Data.Trace)
+	}
+	if len(vector.request.KnowledgeBaseIDs) != 1 || vector.request.KnowledgeBaseIDs[0] != "kb_1" || vector.request.Limit != 5 {
+		t.Fatalf("vector request = %+v", vector.request)
+	}
+}
+
 func TestBusinessRoutesRequireGatewayUser(t *testing.T) {
 	server := newHTTPTestServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/internal/v1/knowledge-bases", nil)
@@ -457,6 +604,61 @@ type document struct {
 	ChunkCount int64  `json:"chunkCount"`
 }
 
+type documentChunkListResponse struct {
+	Data      []documentChunk `json:"data"`
+	Page      pageInfo        `json:"page"`
+	RequestID string          `json:"requestId"`
+}
+
+type documentChunk struct {
+	ID                 string         `json:"id"`
+	KnowledgeBaseID    string         `json:"knowledgeBaseId"`
+	DocumentID         string         `json:"documentId"`
+	ChunkIndex         int32          `json:"chunkIndex"`
+	SectionPath        *string        `json:"sectionPath"`
+	Content            string         `json:"content"`
+	TokenCount         int32          `json:"tokenCount"`
+	ChunkType          *string        `json:"chunkType"`
+	EmbeddingProvider  *string        `json:"embeddingProvider"`
+	EmbeddingDimension *int32         `json:"embeddingDimension"`
+	Metadata           map[string]any `json:"metadata"`
+}
+
+type knowledgeQueryResponse struct {
+	Data struct {
+		ID      string                 `json:"id"`
+		Query   string                 `json:"query"`
+		Results []knowledgeQueryResult `json:"results"`
+		Trace   knowledgeQueryTrace    `json:"trace"`
+	} `json:"data"`
+	RequestID string `json:"requestId"`
+}
+
+type knowledgeQueryResult struct {
+	Score           float64  `json:"score"`
+	KnowledgeBaseID string   `json:"knowledgeBaseId"`
+	DocumentID      string   `json:"documentId"`
+	ChunkID         string   `json:"chunkId"`
+	DocumentName    string   `json:"documentName"`
+	SectionPath     *string  `json:"sectionPath"`
+	ChunkIndex      *int     `json:"chunkIndex"`
+	ChunkType       *string  `json:"chunkType"`
+	ContentPreview  string   `json:"contentPreview"`
+	Tags            []string `json:"tags"`
+}
+
+type knowledgeQueryTrace struct {
+	EmbeddingProvider  string  `json:"embeddingProvider"`
+	EmbeddingModel     string  `json:"embeddingModel"`
+	EmbeddingDimension int     `json:"embeddingDimension"`
+	QdrantCollection   string  `json:"qdrantCollection"`
+	SearchTopK         int     `json:"searchTopK"`
+	ScoreThreshold     float64 `json:"scoreThreshold"`
+	HitCount           int     `json:"hitCount"`
+	Rerank             bool    `json:"rerank"`
+	RerankTopN         *int    `json:"rerankTopN"`
+}
+
 type errorResponseBody struct {
 	Error struct {
 		Code      string            `json:"code"`
@@ -464,6 +666,61 @@ type errorResponseBody struct {
 		RequestID string            `json:"requestId"`
 		Fields    map[string]string `json:"fields"`
 	} `json:"error"`
+}
+
+func seedHTTPKnowledgeDocumentWithChunk(t *testing.T) (*repository.MemoryRepository, time.Time) {
+	t.Helper()
+	repo := repository.NewMemoryRepository()
+	now := time.Date(2026, 6, 29, 10, 0, 0, 0, time.UTC)
+	repo.SeedKnowledgeBase(service.KnowledgeBase{
+		ID:                "kb_1",
+		Name:              "规程库",
+		Description:       "",
+		DocType:           "GENERAL",
+		ChunkStrategy:     json.RawMessage(`{}`),
+		RetrievalStrategy: json.RawMessage(`{}`),
+		CreatedBy:         "usr_test",
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	})
+	fileRef := "file_1"
+	contentType := "text/plain"
+	sizeBytes := int64(9)
+	repo.SeedDocument(service.KnowledgeDocument{
+		ID:              "doc_1",
+		KnowledgeBaseID: "kb_1",
+		FileRef:         &fileRef,
+		Name:            "规程.pdf",
+		ContentType:     &contentType,
+		SizeBytes:       &sizeBytes,
+		Status:          service.DocumentStatusReady,
+		Tags:            []string{"锅炉"},
+		CreatedBy:       "usr_test",
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	})
+	sectionPath := "1. 总则"
+	chunkType := "text"
+	tokenCount := int32(42)
+	embeddingProvider := "local_hashing"
+	embeddingDimension := int32(384)
+	if err := repo.ReplaceDocumentChunks(context.Background(), "doc_1", []service.DocumentChunk{{
+		ID:                 "chunk_1",
+		KnowledgeBaseID:    "kb_1",
+		DocumentID:         "doc_1",
+		ChunkIndex:         0,
+		SectionPath:        &sectionPath,
+		Content:            "本规程适用于 breaker policy",
+		TokenCount:         &tokenCount,
+		ChunkType:          &chunkType,
+		EmbeddingProvider:  &embeddingProvider,
+		EmbeddingDimension: &embeddingDimension,
+		Metadata:           map[string]any{"page": 3},
+		CreatedAt:          now,
+	}}); err != nil {
+		t.Fatalf("ReplaceDocumentChunks() error = %v", err)
+	}
+	return repo, now
 }
 
 func seedHTTPParserConfig(repo *repository.MemoryRepository, now time.Time) {
@@ -502,4 +759,55 @@ type httpUploadQueue struct{}
 
 func (q *httpUploadQueue) EnqueueDocumentIngestion(context.Context, service.DocumentIngestionTask) error {
 	return nil
+}
+
+type httpContentSource struct {
+	body        string
+	contentType string
+	sizeBytes   int64
+	fileID      string
+	reqCtx      service.RequestContext
+}
+
+func (s *httpContentSource) ReadSource(_ context.Context, reqCtx service.RequestContext, fileID string) (service.SourceDocument, error) {
+	s.fileID = fileID
+	s.reqCtx = reqCtx
+	return service.SourceDocument{
+		Body:        io.NopCloser(strings.NewReader(s.body)),
+		ContentType: s.contentType,
+		SizeBytes:   s.sizeBytes,
+	}, nil
+}
+
+type httpQueryEmbedder struct{}
+
+func (e httpQueryEmbedder) Embed(context.Context, service.EmbeddingRequest) (service.EmbeddingResult, error) {
+	return service.EmbeddingResult{
+		Vectors:   [][]float32{{1, 0}},
+		Provider:  "local_hashing",
+		Model:     "local_hashing",
+		Dimension: 2,
+	}, nil
+}
+
+type httpVectorIndex struct {
+	request service.VectorSearchRequest
+	hits    []service.VectorSearchHit
+}
+
+func (i *httpVectorIndex) Upsert(context.Context, []service.VectorPoint) error {
+	return nil
+}
+
+func (i *httpVectorIndex) DeleteByDocumentIngestionAttempt(context.Context, string, string) error {
+	return nil
+}
+
+func (i *httpVectorIndex) DeleteStaleDocumentPoints(context.Context, string, string) error {
+	return nil
+}
+
+func (i *httpVectorIndex) Search(_ context.Context, request service.VectorSearchRequest) ([]service.VectorSearchHit, error) {
+	i.request = request
+	return append([]service.VectorSearchHit(nil), i.hits...), nil
 }
