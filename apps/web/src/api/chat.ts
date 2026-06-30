@@ -21,6 +21,11 @@ export type ChatStreamError = {
   status?: number
 }
 
+export type ChatAnswerDeltaData = Record<string, unknown> & {
+  content: string
+  seq: number
+}
+
 export interface ChatStreamHandlers {
   onMessageCreated?: (data: Record<string, unknown> & { seq: number }) => void
   onAgentIterationStarted?: (data: Record<string, unknown> & { seq: number }) => void
@@ -28,7 +33,7 @@ export interface ChatStreamHandlers {
   onToolStarted?: (data: Record<string, unknown> & { seq: number }) => void
   onToolCompleted?: (data: Record<string, unknown> & { seq: number }) => void
   onToolFailed?: (data: Record<string, unknown> & { seq: number }) => void
-  onAnswerDelta?: (data: Record<string, unknown> & { seq: number }) => void
+  onAnswerDelta?: (data: ChatAnswerDeltaData) => void
   onCitationDelta?: (data: Record<string, unknown> & { seq: number }) => void
   onAnswerCompleted?: (data: Record<string, unknown> & { seq: number }) => void
   onError?: (data: ChatStreamError) => void
@@ -56,7 +61,7 @@ function dispatch(event: QASseEventType, data: unknown, handlers: ChatStreamHand
       handlers.onToolFailed?.(data as Record<string, unknown> & { seq: number })
       break
     case 'answer.delta':
-      handlers.onAnswerDelta?.(data as Record<string, unknown> & { seq: number })
+      handlers.onAnswerDelta?.(data as ChatAnswerDeltaData)
       break
     case 'citation.delta':
       handlers.onCitationDelta?.(data as Record<string, unknown> & { seq: number })
@@ -91,6 +96,23 @@ function parseSsePayload(
   return { seq, ...raw }
 }
 
+function getAnswerDeltaContent(payload: Record<string, unknown>): string {
+  if (typeof payload.content === 'string') return payload.content
+  if (typeof payload.text === 'string') return payload.text
+  return ''
+}
+
+function normalizeSsePayload(
+  event: QASseEventType,
+  payload: Record<string, unknown> & { seq: number },
+): Record<string, unknown> & { seq: number } {
+  if (event !== 'answer.delta') return payload
+  return {
+    ...payload,
+    content: getAnswerDeltaContent(payload),
+  }
+}
+
 export function streamChat(
   sessionId: string,
   message: string,
@@ -119,7 +141,12 @@ export function streamChat(
       fallbackSeq += 1
 
       try {
-        dispatch(event as QASseEventType, parseSsePayload(data, fallbackSeq), handlers)
+        const qaEvent = event as QASseEventType
+        dispatch(
+          qaEvent,
+          normalizeSsePayload(qaEvent, parseSsePayload(data, fallbackSeq)),
+          handlers,
+        )
       } catch {
         handlers.onError?.({
           code: 'invalid_sse_event',

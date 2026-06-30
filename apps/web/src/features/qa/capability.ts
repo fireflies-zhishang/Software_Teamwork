@@ -34,6 +34,21 @@ const BLOCKED_SUMMARY_KEY_PARTS = [
   'token',
   'url',
 ]
+const BLOCKED_SUMMARY_VALUE_PATTERNS = [
+  /\bapi[_-]?key\b/i,
+  /\bauthorization\b/i,
+  /\bbearer\s+[a-z0-9._-]+/i,
+  /\b(?:developer|full|hidden|system)\s+prompt\b/i,
+  /\b(?:localhost|127\.0\.0\.1|10\.\d{1,3}\.|172\.(?:1[6-9]|2\d|3[01])\.|192\.168\.)/i,
+  /\bobject\s*key\b/i,
+  /\bprompt\s*[:=]/i,
+  /\bprovider\s+raw\b/i,
+  /\braw\s+(?:body|error|response|result)\b/i,
+  /\bsecret\b/i,
+  /\btoken\b/i,
+  /\bhttps?:\/\//i,
+  /\bminio\b/i,
+]
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value))
@@ -84,11 +99,24 @@ function isBlockedSummaryKey(key: string): boolean {
   return BLOCKED_SUMMARY_KEY_PARTS.some((part) => normalized.includes(part))
 }
 
+function isBlockedSummaryValue(value: string): boolean {
+  return BLOCKED_SUMMARY_VALUE_PATTERNS.some((pattern) => pattern.test(value))
+}
+
 function formatSummaryValue(value: unknown): string | undefined {
-  if (typeof value === 'string') return value.trim() || undefined
-  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
-  if (typeof value === 'boolean') return value ? 'true' : 'false'
-  return undefined
+  const formatted =
+    typeof value === 'string'
+      ? value.trim()
+      : typeof value === 'number' && Number.isFinite(value)
+        ? String(value)
+        : typeof value === 'boolean'
+          ? value
+            ? 'true'
+            : 'false'
+          : ''
+
+  if (!formatted || isBlockedSummaryValue(formatted)) return undefined
+  return formatted
 }
 
 function formatSummaryObject(value: unknown): string | undefined {
@@ -121,16 +149,15 @@ export function createSafeToolStep(kind: ToolEventKind, payload: unknown): ToolS
   const toolCallId = getString(data, 'toolCallId')
   const latencyMs = getNumber(data, 'latencyMs')
   const summary =
-    getString(data, 'summary') ??
-    getString(data, 'toolSummary') ??
-    formatSummaryObject(data.argumentsSummary) ??
-    formatSummaryObject(data.resultSummary)
+    formatSummaryObject(data.argumentsSummary) ?? formatSummaryObject(data.resultSummary)
   const errorCode = getString(data, 'errorCode')
   const errorMessage = getString(data, 'errorMessage')
   const detailParts = [
     summary,
     kind === 'failed' && errorCode ? `错误码: ${errorCode}` : undefined,
-    kind === 'failed' && errorMessage ? `错误: ${errorMessage}` : undefined,
+    kind === 'failed' && errorMessage && !isBlockedSummaryValue(errorMessage)
+      ? `错误: ${errorMessage}`
+      : undefined,
     latencyMs != null ? `耗时 ${latencyMs}ms` : undefined,
   ].filter((part): part is string => Boolean(part))
 

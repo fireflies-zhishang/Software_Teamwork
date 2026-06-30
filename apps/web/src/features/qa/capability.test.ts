@@ -38,6 +38,7 @@ describe('QA capability helpers', () => {
   it('builds tool steps from sanitized summary fields without dumping raw payloads', () => {
     const view = createSafeToolStep('completed', {
       argumentsSummary: {
+        internalPreview: 'http://10.0.0.5/minio/private/object',
         objectKey: 'secret/minio/key',
         prompt: 'full hidden prompt',
         queryCount: 3,
@@ -58,7 +59,27 @@ describe('QA capability helpers', () => {
     expect(view.step.detail).toContain('queryCount: 3')
     expect(view.step.detail).not.toContain('secret/minio/key')
     expect(view.step.detail).not.toContain('full hidden prompt')
+    expect(view.step.detail).not.toContain('http://10.0.0.5')
     expect(view.step.detail).not.toContain('provider raw response')
+  })
+
+  it('does not display free-text tool summaries that may leak sensitive details', () => {
+    const view = createSafeToolStep('failed', {
+      errorCode: 'dependency_error',
+      errorMessage: 'provider raw error body includes http://10.0.0.2/internal',
+      latencyMs: 30,
+      summary: 'prompt: hidden system prompt http://10.0.0.1/minio/bucket/object',
+      toolSummary: 'safe-looking but unstructured text from backend',
+      toolName: 'search_knowledge',
+    })
+
+    expect(view.step.detail).toContain('dependency_error')
+    expect(view.step.detail).toContain('30ms')
+    expect(view.step.detail).not.toContain('hidden system prompt')
+    expect(view.step.detail).not.toContain('10.0.0.1')
+    expect(view.step.detail).not.toContain('10.0.0.2')
+    expect(view.step.detail).not.toContain('safe-looking but unstructured')
+    expect(view.step.detail).not.toContain('provider raw error body')
   })
 
   it('accepts only structured reasoning and citation payloads', () => {

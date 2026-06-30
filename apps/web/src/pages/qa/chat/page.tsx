@@ -300,7 +300,7 @@ export function ChatPage() {
         },
         onAnswerDelta(data) {
           if (!verifySeq(data.seq)) return
-          content += typeof data.content === 'string' ? data.content : ''
+          content += data.content
           patchAssistant({ content, status: 'streaming' })
         },
         onAbort() {
