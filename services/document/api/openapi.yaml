@@ -272,10 +272,8 @@ components:
               type: string
               enum:
                 - report
-                - outline
                 - section
-                - file
-              description: report and section are implemented for generation orchestration; outline and file are reserved by the gateway contract.
+              description: Implemented target scopes for job creation. Use section with sectionId for section_regeneration; omit or use report for report-level jobs.
             sectionId:
               type: string
               format: uuid

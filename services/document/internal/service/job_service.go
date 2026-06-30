@@ -94,7 +94,7 @@ func (s *JobService) CreateJob(ctx context.Context, rctx RequestContext, input C
 	if err != nil {
 		return ReportJob{}, err
 	}
-	if input.JobType == JobTypeReportFileCreation && (report.Status == ReportStatusDeleted || report.DeletedAt != nil) {
+	if report.Status == ReportStatusDeleted || report.DeletedAt != nil {
 		return ReportJob{}, NewError(CodeConflict, "report has been deleted", nil)
 	}
 	targetType, targetID, err := resolveCreateJobTarget(input)

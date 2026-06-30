@@ -99,6 +99,75 @@ func TestJobServiceCreateJobRejectsUnknownJobType(t *testing.T) {
 	}
 }
 
+func TestJobServiceCreateJobRejectsDeletedReportForAllJobTypes(t *testing.T) {
+	ctx := context.Background()
+	deletedAt := time.Now().UTC()
+	reportCases := []struct {
+		name   string
+		report Report
+	}{
+		{
+			name: "deleted status",
+			report: Report{
+				ID:        "report-1",
+				CreatorID: "user-1",
+				Status:    ReportStatusDeleted,
+			},
+		},
+		{
+			name: "deleted at set",
+			report: Report{
+				ID:        "report-1",
+				CreatorID: "user-1",
+				Status:    ReportStatusGenerated,
+				DeletedAt: &deletedAt,
+			},
+		},
+	}
+	jobTypes := []JobType{
+		JobTypeOutlineGeneration,
+		JobTypeOutlineRegeneration,
+		JobTypeContentGeneration,
+		JobTypeContentRegeneration,
+		JobTypeSectionRegeneration,
+		JobTypeReportFileCreation,
+	}
+
+	for _, reportCase := range reportCases {
+		for _, jobType := range jobTypes {
+			t.Run(reportCase.name+" "+string(jobType), func(t *testing.T) {
+				repo := &fakeJobRepository{
+					report:   reportCase.report,
+					sections: map[string]ReportSection{"section-1": {ID: "section-1", ReportID: "report-1"}},
+				}
+				enqueuer := &fakeTaskEnqueuer{}
+				svc := NewJobService(repo, enqueuer)
+				input := CreateJobInput{
+					RequestID: "req-deleted",
+					UserID:    "user-1",
+					ReportID:  "report-1",
+					JobType:   jobType,
+				}
+				if jobType == JobTypeSectionRegeneration {
+					input.SectionID = "section-1"
+				}
+
+				_, err := svc.CreateJob(ctx, RequestContext{UserID: "user-1"}, input)
+				if err == nil {
+					t.Fatal("CreateJob() error = nil, want conflict")
+				}
+				appErr, ok := Classify(err)
+				if !ok || appErr.Code != CodeConflict {
+					t.Fatalf("CreateJob() error = %v, want conflict", err)
+				}
+				if repo.createdJob.ID != "" || repo.createdAttempt.ID != "" || enqueuer.jobType != "" || repo.reportFile.ID != "" {
+					t.Fatalf("deleted report should not create job/attempt/file or enqueue, job=%+v attempt=%+v file=%+v enqueued=%q", repo.createdJob, repo.createdAttempt, repo.reportFile, enqueuer.jobType)
+				}
+			})
+		}
+	}
+}
+
 func TestJobServiceCreateJobRecordsOperationLog(t *testing.T) {
 	ctx := context.Background()
 	repo := &fakeJobRepository{
@@ -344,13 +413,14 @@ func TestRetryJobRejectsReportWithDeletedAtSet(t *testing.T) {
 }
 
 type fakeJobRepository struct {
-	report        Report
-	job           ReportJob
-	createdJob    ReportJob
-	reportFile    ReportFile
-	sections      map[string]ReportSection
-	operationLogs []OperationLog
-	taskIDErr     error
+	report         Report
+	job            ReportJob
+	createdJob     ReportJob
+	createdAttempt ReportJobAttempt
+	reportFile     ReportFile
+	sections       map[string]ReportSection
+	operationLogs  []OperationLog
+	taskIDErr      error
 }
 
 func (f *fakeJobRepository) GetReportByID(context.Context, string) (Report, error) {
@@ -452,6 +522,7 @@ func (f *fakeJobRepository) UpdateJobAsynqTaskID(context.Context, string, string
 }
 
 func (f *fakeJobRepository) CreateReportJobAttempt(_ context.Context, value ReportJobAttempt) (ReportJobAttempt, error) {
+	f.createdAttempt = value
 	return value, nil
 }
 

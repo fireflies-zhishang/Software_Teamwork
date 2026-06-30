@@ -4035,9 +4035,7 @@ components:
               type: string
               enum:
               - report
-              - outline
               - section
-              - file
             sectionId:
               type: string
         requirements:
