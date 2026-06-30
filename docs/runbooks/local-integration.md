@@ -8,10 +8,10 @@
 
 | 范围 | 当前状态 | 说明 |
 | --- | --- | --- |
-| 根级本地/演示 Compose | partial | `deploy/docker-compose.yml` 已提供共享 PostgreSQL、Redis、Qdrant、MinIO、服务 migration 和服务串联基线；仍缺统一跨服务 smoke、seed data 和一键验收脚本。 |
+| 根级本地/演示 Compose | partial | `deploy/docker-compose.yml` 已提供共享 PostgreSQL、Redis、Qdrant、MinIO、服务 migration、`seed-local` / `seed-local-ai` 和服务串联基线；仍缺统一跨服务 smoke 和一键验收脚本，现有 seed data 只覆盖本地登录、基础报告类型、示例知识库和 AI profile placeholder。 |
 | QA 服务 Compose | partial | `services/qa/docker-compose.yml` 会启动 QA PostgreSQL、Auth PostgreSQL、Redis、Auth、QA 和 Gateway；不包含 Knowledge、Document、File、AI Gateway。 |
 | Document 服务 Compose | partial | `services/document/docker-compose.yml` 会启动 Document PostgreSQL、Redis、migration 和 Document；不包含 File、AI Gateway。 |
-| AI Gateway 本地运行 | host-run | 需要手动准备 PostgreSQL、migration、service token hash、credential encryption key 和 provider profile。当前无服务级 Compose。 |
+| AI Gateway 本地运行 | root profile / host-run | 根级 `docker compose --profile ai` 会启动 AI Gateway、migration 和 placeholder profile seed；单独调试时也可 host-run，真实 provider smoke 仍需配置有效 provider key。 |
 | File / Knowledge 独立运行 | host-run | 需要手动准备各自依赖；File MinIO adapter 已落地但缺真实对象存储 smoke，Knowledge Qdrant adapter 尚未落地。 |
 | Parser Runtime | contract-only | 当前只有内部 OpenAPI、README 和目录 scaffold；Python packaging、PaddleOCR runtime、Docker image 和 HTTP smoke 尚未落地。 |
 | 前端联调入口 | host-run | 前端只调用 public Gateway `/api/v1/**`；不要直连内部服务。 |
@@ -68,9 +68,11 @@ curl -fsS http://localhost:8085/readyz
 
 注意：模板、材料和报告文件 bytes 需要 File Service；真实大纲/正文生成需要 AI Gateway。当前基础 DOCX 导出使用 Document 内置 `SimpleDOCXGenerator`，不需要 Pandoc/LibreOffice；Pandoc/LibreOffice 仅是后续富 DOCX worker 工具链。当前 Compose 只给 File/AI Gateway 下游设置 URL，不启动这些下游服务，所以 Document-only 环境不能完整读取生成文件内容。Document worker 会执行 `report_file_creation` 的基础 DOCX 导出；其他大纲/正文生成类 job 仍只完成 job/attempt 状态流转。
 
-### AI Gateway host-run
+### AI Gateway root profile / host-run
 
-AI Gateway 需要 PostgreSQL 和 migration。服务 token 运行时只接受 hash：
+根级 `deploy/docker-compose.yml` 的 `--profile ai` 会启动 AI Gateway、执行 migration，并通过
+`seed-local-ai` 写入本地 placeholder profile。下面的 host-run 示例用于单独调试服务进程。
+AI Gateway 服务 token 运行时只接受 hash：
 
 ```bash
 TOKEN=dev-internal-service-token-change-me

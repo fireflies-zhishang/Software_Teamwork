@@ -45,7 +45,7 @@
 | Document MCP tools | 缺失 | README/requirements 保留 Document MCP 工具目标，当前 implementation 已单列缺口。 | QA/Document 工具边界设计。 | 工具注册、权限校验、脱敏输出和调用链路未落地。 | #151、#158 |
 | 前端 App shell、登录态和 RBAC 导航 | 已实现 | `apps/web` auth shell、read-only report navigation 修正。 | 只调用 Gateway `/api/v1/**`。 | 管理端配置、Knowledge 页面和测试基线仍在推进。 | #109、#212、#222、#110、#111、#163 |
 | 前端 Gateway 类型和 typed client | 已实现 / 需持续校验 | `openapi-typescript` 已进入前端依赖，`api:generate` 脚本存在。 | Gateway OpenAPI -> `apps/web/src/api/generated/`。 | 类型漂移需 CI 和 PR 前检查持续约束。 | #108、#161、#162 |
-| 本地联调环境 | 部分实现 | 根 `deploy/docker-compose.yml` 已提供本地/演示基线；QA 和 Document 也有服务级 Compose。 | 本地运行手册见 `docs/runbooks/local-integration.md`。 | seed data、统一跨服务 smoke 和一键 E2E 验收脚本缺失。 | #125、#150 |
+| 本地联调环境 | 部分实现 | 根 `deploy/docker-compose.yml` 已提供本地/演示基线，并包含 `seed-local` / `seed-local-ai` 基础 seed；QA 和 Document 也有服务级 Compose。 | 本地运行手册见 `docs/runbooks/local-integration.md`。 | 现有 seed data 覆盖本地登录、基础报告类型、示例知识库和 AI profile placeholder，但跨服务验收数据覆盖、统一跨服务 smoke 和一键 E2E 验收脚本仍缺。 | #125、#150 |
 | 测试策略和 CI | 部分实现 | Go services workflow、goose migration workflow、Frontend check/build/unit/E2E workflow、Gateway contract workflow、API type drift workflow。 | 测试策略见 `docs/testing/strategy.md`。 | Parser Python/runtime CI、后端路径过滤矩阵和跨服务 E2E smoke 待补。 | #123、#125、#163 |
 
 ## 当前最重要的文档缺口
