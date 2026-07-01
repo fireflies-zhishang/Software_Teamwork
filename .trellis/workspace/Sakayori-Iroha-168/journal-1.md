@@ -71,3 +71,36 @@ Cleaned Knowledge/Document/File storage-boundary docs so owner services use opaq
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: Archive auth gateway test audit
+
+**Date**: 2026-07-01
+**Task**: Archive auth gateway test audit
+**Branch**: `Special/docs/sync-trellis-spec-docs`
+
+### Summary
+
+Recorded 0701 auth/gateway and file service test audit reports, then archived the completed auth-gateway test audit task. Left the system link condition coverage task active because its target document is not complete.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2c524c6` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
